@@ -139,6 +139,7 @@ input::placeholder{color:var(--mist);opacity:.7}
 .ready .eyebrow{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--mist);font-weight:600}
 .ready h1{font-size:clamp(40px,12vw,56px)}
 .ghost{width:100%;background:transparent;color:var(--ink);border:1px solid var(--line);padding:16px;border-radius:999px;font-weight:600}
+.purple-dot{width:160px;height:160px;border-radius:50%;background:#8B3DFF;margin:12px auto 0;flex-shrink:0}
 </style>
 
 <main class="screen picker" id="home">
@@ -164,6 +165,7 @@ input::placeholder{color:var(--mist);opacity:.7}
     <div class="recent-title">Search results</div>
     <div id="resultsList" class="course-list"></div>
   </div>
+  <div class="purple-dot" aria-hidden="true"></div>
 </main>
 
 <main class="screen ready" id="ready" hidden>
