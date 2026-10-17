@@ -18,6 +18,13 @@ saying something works.
   under `/* Leaflet essentials */`. If something map-related looks broken
   (tiles misplaced, markers invisible), a missing Leaflet CSS rule is the
   first suspect.
+- **Installable web app (PWA):** `manifest.webmanifest` (name, colors, icons in
+  `icons/`), `sw.js` service worker (network-first for the page, cache-first for
+  app files/Leaflet/fonts, saves up to 1500 Esri tiles; course search and
+  Overpass are not cached by it — the app caches those in localStorage).
+  **Bump `VERSION` in sw.js whenever sw.js or the list of app files changes.**
+  `netlify.toml` sets no-cache on sw.js/index.html so updates arrive.
+  Registered at the end of index.html only on https/localhost.
 - **Deploy:** Netlify is linked to this repo. Every push to `main` goes live in
   about a minute. There is no staging site, so test locally before pushing.
 - **Run locally:** `python3 -m http.server 8000` or `npm start`, then

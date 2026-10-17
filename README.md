@@ -4,8 +4,18 @@ A phone-friendly golf web app. Search for a course, see the whole layout on a
 satellite map, pick your tees, then play it one hole at a time with the green's
 front, middle and back marked.
 
-The whole app is a single file: `index.html`. There is no build step and nothing
-to install to run it.
+The app itself is a single file: `index.html`. Alongside it: `manifest.webmanifest`
+(app name/icon), `sw.js` (offline support), `icons/`, and `netlify.toml`. There is
+no build step and nothing to install to run it.
+
+## Install it on a phone
+
+It's an installable web app: open the site, then
+- **iPhone (Safari):** Share button → **Add to Home Screen**
+- **Android (Chrome):** ⋮ menu → **Install app** / **Add to Home screen**
+
+It then opens full screen from its own icon, and opens even with weak or no
+signal (courses and maps you've already viewed are saved on the phone).
 
 ## Run it on your computer
 

@@ -6,6 +6,11 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="theme-color" content="#0B2A4A">
+<meta name="apple-mobile-web-app-title" content="Caddie Voice">
+<meta name="mobile-web-app-capable" content="yes">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="icon" type="image/png" href="icons/favicon-64.png">
 <title>Caddie Voice</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;800&family=Public+Sans:wght@400;500;600&display=swap">
@@ -735,6 +740,12 @@ $('#courseInput').onkeydown = e => { if (e.key !== 'Enter') return; e.preventDef
   clearTimeout(searchT); runSearch(q); };
 $('#homeBtn').onclick = () => { $('#ready').hidden = true; $('#home').hidden = false; };
 update();
+
+/* Installable app: save the app on the phone so it opens with weak or no signal.
+   Only on real web addresses (https or localhost); skipped elsewhere. */
+if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')){
+  addEventListener('load', () => { navigator.serviceWorker.register('sw.js').catch(() => {}); });
+}
 </script>
 
 </body>
