@@ -1,7 +1,17 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0B2A4A">
 <title>Caddie Voice</title>
-<meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;800&family=Public+Sans:wght@400;500;600&display=swap">
+<style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0;font:14px system-ui,-apple-system,sans-serif}img{max-width:100%}[hidden]{display:none!important}</style>
+</head>
+<body>
 <style>
 /* Layout: one full-height screen, name centered, one Play button in thumb reach; course prompt rises as a bottom sheet. Single committed deep-blue look. */
 :root{
@@ -19,6 +29,7 @@
   color-scheme:dark;
 }
 *{box-sizing:border-box}
+[hidden]{display:none!important}
 html,body{height:100%}
 body{margin:0;background:var(--sky);background-image:linear-gradient(180deg,var(--sky) 0%,var(--deep) 100%);color:var(--ink);font-family:var(--body);font-size:16px;
   padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:0}
@@ -321,13 +332,14 @@ function readCache(id){ try { const c = JSON.parse(localStorage.getItem(OKEY + i
 function writeCache(id, F){ try { localStorage.setItem(OKEY + id, JSON.stringify({ ts: Date.now(), F })); } catch {} }
 
 /* hide preferences, remembered on this phone */
+let statusDismissed = false;
 const HKEY = 'caddie-voice-hidden';
 let hidden = (() => { try { return JSON.parse(localStorage.getItem(HKEY)) || {}; } catch { return {}; } })();
 const saveHidden = () => { try { localStorage.setItem(HKEY, JSON.stringify(hidden)); } catch {} };
 function showNoMap(){}
 function setStatus(text, btn, hideAfter, important){
   clearTimeout(statusT);
-  if (!important && course && hidden['status-' + course.id]) { $('#osmStatus').hidden = true; return; }
+  if (!important && statusDismissed) { $('#osmStatus').hidden = true; return; }
   $('#osmText').textContent = text; $('#osmStatus').hidden = false;
   $('#osmRetry').hidden = !btn; if (btn) $('#osmRetry').textContent = btn;
   if (hideAfter) statusT = setTimeout(() => $('#osmStatus').hidden = true, hideAfter);
@@ -359,7 +371,7 @@ function applyOSM(k, F, source){
   osmData = F;
   if (map) drawOSM(F);
   const n = F.holes.length, g = F.greens.length;
-  if (n) setStatus(`${n < 18 ? n + ' of 18' : n} holes mapped from OpenStreetMap` + (fromCache ? ' (saved on this phone)' : builtIn ? ' (built into the app)' : ''), 'Refresh', 6000);
+  if (n) setStatus(`${n < 18 ? n + ' of 18' : n} holes mapped from OpenStreetMap` + (fromCache ? ' (saved on this phone)' : builtIn ? ' (built into the app)' : ''), 'Refresh');
   else if (g) setStatus(`OpenStreetMap has ${g} greens here but no hole routes. Pin each green to link it to a hole.`, 'Refresh');
   else setStatus('OpenStreetMap has no hole detail for this course yet. Pin the greens yourself.', 'Refresh');
   renderHole();
@@ -389,7 +401,7 @@ function holeInfo(n){
 
 /* ---------- screens ---------- */
 function openMap(k){
-  course = k; hole = 1; pinning = false;
+  course = k; hole = 1; pinning = false; statusDismissed = false;   // new round: show the message again
   $('#mapCourse').textContent = k.name; $('#mapPlace').textContent = k.place;
   $('#mapScreen').hidden = false;
   if (!window.L) { showNoMap(); renderHole(); return; }
@@ -444,8 +456,8 @@ $('#showAll').onclick = () => { pinning = false; renderHole(false);
   if (map && b?.length) map.flyToBounds(L.latLngBounds(b), { paddingTopLeft:[20,90], paddingBottomRight:[20,200], duration:.6 });
   else map?.flyTo(course.center, course.zoom, { duration:.6 }); };
 $('#osmRetry').onclick = () => course && loadOSM(course, true);
-$('#osmClose').onclick = () => { $('#osmStatus').hidden = true; if (course) { hidden['status-' + course.id] = true; saveHidden(); } };
-$('#mapBack').onclick = () => { $('#mapScreen').hidden = true; $('#home').hidden = false; course = null; };
+$('#osmClose').onclick = () => { $('#osmStatus').hidden = true; statusDismissed = true; };   // hidden for the rest of this round
+$('#mapBack').onclick = () => { $('#mapScreen').hidden = true; $('#osmStatus').hidden = true; $('#home').hidden = false; course = null; statusDismissed = false; };
 
 /* ---------- find any course by name (OpenStreetMap search) ---------- */
 const GKEY = 'caddie-voice-geo';
@@ -480,3 +492,6 @@ $('#startBtn').onclick = start;
 $('#homeBtn').onclick = () => { $('#ready').hidden = true; $('#home').hidden = false; };
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('#sheet').hidden) closeSheet(); });
 </script>
+
+</body>
+</html>
