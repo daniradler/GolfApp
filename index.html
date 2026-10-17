@@ -337,8 +337,8 @@ async function loadOSM(k, force){
   osmData = null; osmLayer?.remove(); curLayer?.remove();
   const cached = !force && readCache(k.id);
   if (cached) return applyOSM(k, cached, 'saved');
-  if (k.osm && !force) applyOSM(k, k.osm, 'built-in');
-  setStatus('Looking up hole layouts on OpenStreetMap…');
+  if (k.osm && !force) applyOSM(k, k.osm, 'built-in');   // show built-in layout now; check for newer data quietly
+  else setStatus('Looking up hole layouts on OpenStreetMap…');
   try {
     let F = parseOSM(await overpass(courseQuery(k.center)));
     if (F.holes.length < 18){
