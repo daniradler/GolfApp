@@ -84,3 +84,7 @@ on `localhost:8000` won't appear on the Netlify site, and vice versa.
 ## Deploying
 
 The `main` branch is deployed by Netlify; every push goes live automatically.
+
+---
+
+Hi from Spencer! 👋 Checked out the app and got it running on my server.
