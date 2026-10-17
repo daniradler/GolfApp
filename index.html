@@ -84,6 +84,10 @@ input::placeholder{color:var(--mist);opacity:.7}
   width:max-content;max-width:calc(100% - 24px);display:flex;align-items:center;gap:10px;background:var(--panel);border:1px solid var(--line);
   border-radius:16px;padding:8px 8px 8px 14px;font-size:13px;line-height:1.35}
 .osm-status span{min-width:0}
+.osm-status .x,.nomap .x{flex:0 0 auto;width:32px;height:32px;padding:0;border-radius:50%;background:transparent;border:0;color:var(--mist);font-size:22px;line-height:1}
+.osm-status .x:hover,.nomap .x:hover{color:var(--ink)}
+.nomap{padding-right:40px!important}
+.nomap-x{position:absolute;top:4px;right:4px}
 .osm-status button{flex:0 0 auto;background:var(--field);color:var(--ink);border:1px solid var(--line);border-radius:999px;padding:6px 12px;font-size:13px;font-weight:600}
 .hole-tag{display:flex!important;align-items:center;justify-content:center;background:var(--play);color:var(--play-ink);border:2px solid var(--ink);
   border-radius:50%;font:700 12px/1 var(--body);box-shadow:0 2px 6px rgba(0,0,0,.4)}
@@ -141,8 +145,9 @@ input::placeholder{color:var(--mist);opacity:.7}
     <button class="back" id="mapBack" aria-label="Back to start">‹</button>
     <h2><span id="mapCourse"></span><small id="mapPlace"></small></h2>
   </div>
-  <div class="osm-status" id="osmStatus" role="status" hidden><span id="osmText"></span><button id="osmRetry" hidden>Retry</button></div>
+  <div class="osm-status" id="osmStatus" role="status" hidden><span id="osmText"></span><button id="osmRetry" hidden>Retry</button><button class="x" id="osmClose" aria-label="Hide this message">×</button></div>
   <div class="nomap" id="noMap" hidden>
+    <button class="x nomap-x" id="noMapClose" aria-label="Hide this message">×</button>
     <b>No satellite photo in this preview</b>
     <p>The course layout still shows. The photo loads when you open the app from your Netlify link.</p>
     <a id="gmapsLink" href="#" target="_blank" rel="noopener">Open satellite view in Google Maps</a>
@@ -321,8 +326,14 @@ function readCache(id){ try { const c = JSON.parse(localStorage.getItem(OKEY + i
   return c && Date.now() - c.ts < CACHE_DAYS*864e5 ? c.F : null; } catch { return null; } }
 function writeCache(id, F){ try { localStorage.setItem(OKEY + id, JSON.stringify({ ts: Date.now(), F })); } catch {} }
 
-function setStatus(text, btn, hideAfter){
+/* hide preferences, remembered on this phone */
+const HKEY = 'caddie-voice-hidden';
+let hidden = (() => { try { return JSON.parse(localStorage.getItem(HKEY)) || {}; } catch { return {}; } })();
+const saveHidden = () => { try { localStorage.setItem(HKEY, JSON.stringify(hidden)); } catch {} };
+function showNoMap(){ if (!hidden.noMap) $('#noMap').hidden = false; }
+function setStatus(text, btn, hideAfter, important){
   clearTimeout(statusT);
+  if (!important && course && hidden['status-' + course.id]) { $('#osmStatus').hidden = true; return; }
   $('#osmText').textContent = text; $('#osmStatus').hidden = false;
   $('#osmRetry').hidden = !btn; if (btn) $('#osmRetry').textContent = btn;
   if (hideAfter) statusT = setTimeout(() => $('#osmStatus').hidden = true, hideAfter);
@@ -345,7 +356,7 @@ async function loadOSM(k, force){
   } catch {
     if (course !== k) return;
     if (k.osm) return applyOSM(k, k.osm, 'built-in');
-    setStatus("Couldn't reach OpenStreetMap, so only the satellite view is showing.", 'Retry');
+    setStatus("Couldn't reach OpenStreetMap, so only the satellite view is showing.", 'Retry', 0, true);
   }
 }
 
@@ -388,14 +399,14 @@ function openMap(k){
   $('#mapCourse').textContent = k.name; $('#mapPlace').textContent = k.place;
   $('#gmapsLink').href = `https://www.google.com/maps/@${k.center[0]},${k.center[1]},900m/data=!3m1!1e3`;
   $('#mapScreen').hidden = false;
-  if (!window.L) { $('#noMap').hidden = false; renderHole(); return; }
+  if (!window.L) { showNoMap(); renderHole(); return; }
   if (!map){
     map = L.map('map', { zoomControl:false, attributionControl:true, fadeAnimation:false }).setView(k.center, k.zoom);
     const layer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
       { maxZoom:20, maxNativeZoom:19, attribution:'Imagery © Esri, Maxar · Course data © OpenStreetMap contributors' }).addTo(map);
     layer.on('tileload', () => { tilesOk = true; $('#noMap').hidden = true; });
-    layer.on('tileerror', () => { setTimeout(() => { if (!tilesOk) $('#noMap').hidden = false; }, 1500); });
-    setTimeout(() => { if (!tilesOk) $('#noMap').hidden = false; }, 6000);
+    layer.on('tileerror', () => { setTimeout(() => { if (!tilesOk) showNoMap(); }, 1500); });
+    setTimeout(() => { if (!tilesOk) showNoMap(); }, 6000);
     map.on('click', e => { if (!pinning) return;
       (greens[course.id] ||= {})[hole] = [e.latlng.lat, e.latlng.lng]; saveGreens();
       pinning = false; renderHole(); });
@@ -440,6 +451,8 @@ $('#showAll').onclick = () => { pinning = false; renderHole(false);
   if (map && b?.length) map.flyToBounds(L.latLngBounds(b), { paddingTopLeft:[20,90], paddingBottomRight:[20,200], duration:.6 });
   else map?.flyTo(course.center, course.zoom, { duration:.6 }); };
 $('#osmRetry').onclick = () => course && loadOSM(course, true);
+$('#osmClose').onclick = () => { $('#osmStatus').hidden = true; if (course) { hidden['status-' + course.id] = true; saveHidden(); } };
+$('#noMapClose').onclick = () => { $('#noMap').hidden = true; hidden.noMap = true; saveHidden(); };
 $('#mapBack').onclick = () => { $('#mapScreen').hidden = true; $('#home').hidden = false; course = null; };
 
 /* ---------- find any course by name (OpenStreetMap search) ---------- */
