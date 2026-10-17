@@ -96,6 +96,10 @@ a real bug once).
 
 ## Working agreements
 
+- **GitHub `main` is the source of truth.** More than one place edits this repo
+  (Claude Code, the Claude app, a friend). Always `git pull` before editing and
+  edit `index.html` in the repo directly; never overwrite it with a copy made
+  elsewhere.
 - Test before pushing. A quick check that's worked well: serve locally and drive
   it with Playwright (pick Indian Island → Start round → next hole → End round),
   watching for page errors.
