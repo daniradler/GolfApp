@@ -146,12 +146,6 @@ input::placeholder{color:var(--mist);opacity:.7}
     <h2><span id="mapCourse"></span><small id="mapPlace"></small></h2>
   </div>
   <div class="osm-status" id="osmStatus" role="status" hidden><span id="osmText"></span><button id="osmRetry" hidden>Retry</button><button class="x" id="osmClose" aria-label="Hide this message">×</button></div>
-  <div class="nomap" id="noMap" hidden>
-    <button class="x nomap-x" id="noMapClose" aria-label="Hide this message">×</button>
-    <b>No satellite photo in this preview</b>
-    <p>The course layout still shows. The photo loads when you open the app from your Netlify link.</p>
-    <a id="gmapsLink" href="#" target="_blank" rel="noopener">Open satellite view in Google Maps</a>
-  </div>
   <div class="holecard"><div class="holecard-in">
     <div class="holerow">
       <button class="step" id="holePrev" aria-label="Previous hole">‹</button>
@@ -330,7 +324,7 @@ function writeCache(id, F){ try { localStorage.setItem(OKEY + id, JSON.stringify
 const HKEY = 'caddie-voice-hidden';
 let hidden = (() => { try { return JSON.parse(localStorage.getItem(HKEY)) || {}; } catch { return {}; } })();
 const saveHidden = () => { try { localStorage.setItem(HKEY, JSON.stringify(hidden)); } catch {} };
-function showNoMap(){ if (!hidden.noMap) $('#noMap').hidden = false; }
+function showNoMap(){}
 function setStatus(text, btn, hideAfter, important){
   clearTimeout(statusT);
   if (!important && course && hidden['status-' + course.id]) { $('#osmStatus').hidden = true; return; }
@@ -397,14 +391,13 @@ function holeInfo(n){
 function openMap(k){
   course = k; hole = 1; pinning = false;
   $('#mapCourse').textContent = k.name; $('#mapPlace').textContent = k.place;
-  $('#gmapsLink').href = `https://www.google.com/maps/@${k.center[0]},${k.center[1]},900m/data=!3m1!1e3`;
   $('#mapScreen').hidden = false;
   if (!window.L) { showNoMap(); renderHole(); return; }
   if (!map){
     map = L.map('map', { zoomControl:false, attributionControl:true, fadeAnimation:false }).setView(k.center, k.zoom);
     const layer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
       { maxZoom:20, maxNativeZoom:19, attribution:'Imagery © Esri, Maxar · Course data © OpenStreetMap contributors' }).addTo(map);
-    layer.on('tileload', () => { tilesOk = true; $('#noMap').hidden = true; });
+    layer.on('tileload', () => { tilesOk = true; });
     layer.on('tileerror', () => { setTimeout(() => { if (!tilesOk) showNoMap(); }, 1500); });
     setTimeout(() => { if (!tilesOk) showNoMap(); }, 6000);
     map.on('click', e => { if (!pinning) return;
@@ -452,7 +445,6 @@ $('#showAll').onclick = () => { pinning = false; renderHole(false);
   else map?.flyTo(course.center, course.zoom, { duration:.6 }); };
 $('#osmRetry').onclick = () => course && loadOSM(course, true);
 $('#osmClose').onclick = () => { $('#osmStatus').hidden = true; if (course) { hidden['status-' + course.id] = true; saveHidden(); } };
-$('#noMapClose').onclick = () => { $('#noMap').hidden = true; hidden.noMap = true; saveHidden(); };
 $('#mapBack').onclick = () => { $('#mapScreen').hidden = true; $('#home').hidden = false; course = null; };
 
 /* ---------- find any course by name (OpenStreetMap search) ---------- */
