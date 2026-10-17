@@ -13,7 +13,7 @@
 </head>
 <body>
 <style>
-/* Layout: one full-height screen, name centered, one Play button in thumb reach; course prompt rises as a bottom sheet. Single committed deep-blue look. */
+/* Layout: course picker first; then a full-screen satellite map with a course overview and Start round button, then one hole at a time. Single committed deep-blue look. */
 :root{
   --sky:#0B2A4A;      /* page ground */
   --deep:#071C33;     /* gradient floor */
@@ -57,7 +57,7 @@ input{font:inherit;width:100%;background:var(--field);color:var(--ink);border:1p
 input::placeholder{color:var(--mist);opacity:.7}
 .recent{display:flex;flex-direction:column;gap:8px}
 .recent-title{font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--mist);font-weight:600}
-.course{display:flex;justify-content:space-between;align-items:center;width:100%;background:transparent;color:var(--ink);border:1px solid var(--line);border-radius:14px;padding:14px 16px;text-align:left}
+.course{display:flex;flex-direction:column;align-items:flex-start;gap:2px;width:100%;background:transparent;color:var(--ink);border:1px solid var(--line);border-radius:14px;padding:14px 16px;text-align:left}
 .course small{color:var(--mist);font-size:13px}
 .course[aria-pressed="true"]{border-color:var(--play);background:rgba(79,179,255,.12)}
 .empty{color:var(--mist);font-size:14px;margin:0}
@@ -120,6 +120,17 @@ input::placeholder{color:var(--mist);opacity:.7}
 .leaflet-control-attribution{background:rgba(7,28,51,.7);color:var(--mist);font-size:10px;padding:2px 6px;margin-bottom:calc(150px + env(safe-area-inset-bottom,0px))}
 .leaflet-control-attribution a{color:var(--mist)}
 
+.picker{gap:20px;padding-block:28px 28px}
+.brand{display:flex;align-items:center;gap:10px;font-family:var(--display);font-weight:800;font-size:20px;letter-spacing:.06em;text-transform:uppercase;color:var(--mist)}
+.brand .mark{width:36px;height:36px}
+.picker h1{font-size:clamp(40px,12vw,54px)}
+.field{display:flex;flex-direction:column;gap:6px}
+.course-list{display:flex;flex-direction:column;gap:8px}
+.start-round{position:absolute;z-index:1100;left:50%;top:75%;transform:translate(-50%,-50%);width:min(360px,calc(100% - 32px))}
+@media (prefers-reduced-motion:no-preference){.start-round:active{transform:translate(-50%,-50%) scale(.97)}}
+.end{margin-left:auto;flex:0 0 auto;background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:999px;padding:10px 16px;font-weight:600;font-size:15px}
+.topbar h2{flex:1}
+
 /* placeholder after start */
 .ready .hero{gap:10px}
 .ready .eyebrow{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--mist);font-weight:600}
@@ -127,18 +138,26 @@ input::placeholder{color:var(--mist);opacity:.7}
 .ghost{width:100%;background:transparent;color:var(--ink);border:1px solid var(--line);padding:16px;border-radius:999px;font-weight:600}
 </style>
 
-<main class="screen" id="home">
-  <div class="hero">
+<main class="screen picker" id="home">
+  <div class="brand">
     <svg class="mark" viewBox="0 0 84 84" aria-hidden="true">
       <circle cx="42" cy="42" r="40" fill="var(--panel)" stroke="var(--line)" stroke-width="2"/>
       <line x1="36" y1="18" x2="36" y2="62" stroke="var(--ink)" stroke-width="3" stroke-linecap="round"/>
       <path d="M37 19 L60 27 L37 35 Z" fill="var(--play)"/>
       <ellipse cx="42" cy="63" rx="16" ry="4" fill="var(--sky)"/>
     </svg>
-    <h1>Caddie Voice</h1>
-    <p class="tag">Your yardage, spoken.</p>
+    Caddie Voice
   </div>
-  <button class="play" id="playBtn">Play</button>
+  <h1>Select a course</h1>
+  <div class="field">
+    <label for="courseInput">Search courses</label>
+    <input id="courseInput" type="search" placeholder="Course name or town" autocomplete="off" enterkeyhint="search">
+  </div>
+  <div class="course-list">
+    <div class="recent-title" id="listTitle">Courses</div>
+    <div id="recentList" class="course-list"></div>
+  </div>
+  <button class="go" id="findBtn" hidden></button>
 </main>
 
 <main class="screen ready" id="ready" hidden>
@@ -147,17 +166,19 @@ input::placeholder{color:var(--mist);opacity:.7}
     <h1 id="readyCourse"></h1>
     <p class="tag" id="readyTag"></p>
   </div>
-  <button class="ghost" id="homeBtn">Back to start</button>
+  <button class="ghost" id="homeBtn">Back to courses</button>
 </main>
 
 <section class="map-screen" id="mapScreen" hidden>
   <div id="map" aria-label="Satellite view of the course"></div>
   <div class="topbar">
-    <button class="back" id="mapBack" aria-label="Back to start">‹</button>
+    <button class="back" id="mapBack" aria-label="Back to courses">‹</button>
     <h2><span id="mapCourse"></span><small id="mapPlace"></small></h2>
+    <button class="end" id="endRound" hidden>End round</button>
   </div>
   <div class="osm-status" id="osmStatus" role="status" hidden><span id="osmText"></span><button id="osmRetry" hidden>Retry</button><button class="x" id="osmClose" aria-label="Hide this message">×</button></div>
-  <div class="holecard"><div class="holecard-in">
+  <button class="play start-round" id="startRound">Start round</button>
+  <div class="holecard" id="holeCard" hidden><div class="holecard-in">
     <div class="holerow">
       <button class="step" id="holePrev" aria-label="Previous hole">‹</button>
       <div class="holeinfo"><div class="num" id="holeNum">Hole 1</div><div class="meta" id="holeMeta"></div></div>
@@ -165,29 +186,11 @@ input::placeholder{color:var(--mist);opacity:.7}
     </div>
     <div class="pinrow">
       <button class="pinbtn" id="pinGreen" aria-pressed="false">Pin the green</button>
-      <button class="pinbtn" id="showAll">Whole course</button>
     </div>
     <p class="hint" id="pinHint">Tap "Pin the green," then tap the green on the map. It's saved for every round.</p>
   </div></div>
 </section>
 
-<div class="scrim" id="scrim" hidden></div>
-<section class="sheet" id="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle" hidden>
-  <div class="sheet-in">
-    <div class="grab"></div>
-    <h2 id="sheetTitle">Which course are you playing?</h2>
-    <div style="display:flex;flex-direction:column;gap:6px">
-      <label for="courseInput">Course name</label>
-      <input id="courseInput" type="text" placeholder="Type a course name" autocomplete="off" enterkeyhint="go">
-    </div>
-    <div class="recent">
-      <div class="recent-title">Courses</div>
-      <div id="recentList" class="recent"></div>
-    </div>
-    <button class="go" id="startBtn" disabled>Start round</button>
-    <button class="cancel" id="cancelBtn">Cancel</button>
-  </div>
-</section>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
 <script>
@@ -209,36 +212,38 @@ const KNOWN = [{
 const findKnown = name => KNOWN.find(k => name.toLowerCase().includes(k.name.toLowerCase().split(' golf')[0]) || k.name.toLowerCase() === name.toLowerCase());
 
 function fmt(ts){ return new Date(ts).toLocaleDateString(undefined,{month:'short',day:'numeric'}); }
-function renderRecent(){
-  const box = $('#recentList'), typed = $('#courseInput').value.trim().toLowerCase();
-  box.innerHTML = '';
+function courseOptions(){
   const known = KNOWN.filter(k => !courses.some(c => c.name.toLowerCase() === k.name.toLowerCase()))
-    .map(k => ({name:k.name, sub:k.place.split(' · ')[0] + ' · Satellite map'}));
-  const list = [...courses, ...known].filter(c => !typed || c.name.toLowerCase().includes(typed));
+    .map(k => ({ name:k.name, sub:k.place.split(' · ')[0] + ' · Course map' }));
+  return [...courses, ...known];
+}
+function renderRecent(){
+  const box = $('#recentList'), typedRaw = $('#courseInput').value.trim(), typed = typedRaw.toLowerCase();
+  box.innerHTML = '';
+  const list = courseOptions().filter(c => !typed || c.name.toLowerCase().includes(typed));
+  $('#listTitle').textContent = typed ? 'Matches' : 'Courses';
   if (!list.length){
-    const p = document.createElement('p'); p.className='empty';
-    p.textContent = 'No match. Start the round to add it.';
-    box.appendChild(p); return;
+    const p = document.createElement('p'); p.className = 'empty';
+    p.textContent = 'No saved course matches. Search the map below.';
+    box.appendChild(p);
   }
-  list.slice(0,4).forEach(c => {
-    const b = document.createElement('button'); b.className='course';
-    b.setAttribute('aria-pressed', c.name.toLowerCase() === typed);
+  list.slice(0, 8).forEach(c => {
+    const b = document.createElement('button'); b.className = 'course';
     const n = document.createElement('span'); n.textContent = c.name;
     const d = document.createElement('small'); d.textContent = c.sub || ('Last played ' + fmt(c.last));
-    b.append(n,d);
-    b.onclick = () => { $('#courseInput').value = c.name; update(); };
+    b.append(n, d);
+    b.onclick = () => choose(c.name);
     box.appendChild(b);
   });
+  const exact = list.some(c => c.name.toLowerCase() === typed);
+  $('#findBtn').hidden = !typed || exact;
+  $('#findBtn').textContent = `Find "${typedRaw}" on the map`;
 }
-function update(){ $('#startBtn').disabled = !$('#courseInput').value.trim(); renderRecent(); }
-
-function openSheet(){ $('#scrim').hidden = $('#sheet').hidden = false; $('#courseInput').value=''; update(); setTimeout(()=>$('#courseInput').focus(),50); }
-function closeSheet(){ $('#scrim').hidden = $('#sheet').hidden = true; $('#playBtn').focus(); }
-function start(){
-  const name = $('#courseInput').value.trim(); if (!name) return;
-  courses = [{name, last: Date.now()}, ...courses.filter(c => c.name.toLowerCase() !== name.toLowerCase())].slice(0,20);
+function update(){ renderRecent(); }
+function choose(name){
+  name = name.trim(); if (!name) return;
+  courses = [{ name, last: Date.now() }, ...courses.filter(c => c.name.toLowerCase() !== name.toLowerCase())].slice(0, 20);
   save(courses);
-  $('#scrim').hidden = $('#sheet').hidden = true;
   const k = findKnown(name);
   $('#home').hidden = true;
   if (k) openMap(k); else lookupCourse(name);
@@ -332,17 +337,20 @@ function readCache(id){ try { const c = JSON.parse(localStorage.getItem(OKEY + i
 function writeCache(id, F){ try { localStorage.setItem(OKEY + id, JSON.stringify({ ts: Date.now(), F })); } catch {} }
 
 /* hide preferences, remembered on this phone */
-let statusDismissed = false;
+let statusDismissed = false, mode = 'overview', lastStatus = null;
 const HKEY = 'caddie-voice-hidden';
 let hidden = (() => { try { return JSON.parse(localStorage.getItem(HKEY)) || {}; } catch { return {}; } })();
 const saveHidden = () => { try { localStorage.setItem(HKEY, JSON.stringify(hidden)); } catch {} };
 function showNoMap(){}
 function setStatus(text, btn, hideAfter, important){
+  lastStatus = { text, btn, important }; showStatus();
+}
+function showStatus(){
   clearTimeout(statusT);
-  if (!important && statusDismissed) { $('#osmStatus').hidden = true; return; }
-  $('#osmText').textContent = text; $('#osmStatus').hidden = false;
-  $('#osmRetry').hidden = !btn; if (btn) $('#osmRetry').textContent = btn;
-  if (hideAfter) statusT = setTimeout(() => $('#osmStatus').hidden = true, hideAfter);
+  const st = lastStatus;
+  if (!st || (mode !== 'round' && !st.important) || (!st.important && statusDismissed)) { $('#osmStatus').hidden = true; return; }
+  $('#osmText').textContent = st.text; $('#osmStatus').hidden = false;
+  $('#osmRetry').hidden = !st.btn; if (st.btn) $('#osmRetry').textContent = st.btn;
 }
 
 async function loadOSM(k, force){
@@ -374,22 +382,47 @@ function applyOSM(k, F, source){
   if (n) setStatus(`${n < 18 ? n + ' of 18' : n} holes mapped from OpenStreetMap` + (fromCache ? ' (saved on this phone)' : builtIn ? ' (built into the app)' : ''), 'Refresh');
   else if (g) setStatus(`OpenStreetMap has ${g} greens here but no hole routes. Pin each green to link it to a hole.`, 'Refresh');
   else setStatus('OpenStreetMap has no hole detail for this course yet. Pin the greens yourself.', 'Refresh');
-  renderHole();
+  render();
 }
 
+const STYLE = {
+  fairways: { color:'#7CD992', weight:1, opacity:.5, fillColor:'#5FCB7A', fillOpacity:.15 },
+  tees:     { color:'#EAF3FF', weight:1, fillColor:'#EAF3FF', fillOpacity:.25 },
+  water:    { color:'#4FB3FF', weight:1, fillColor:'#4FB3FF', fillOpacity:.3 },
+  bunkers:  { color:'#F2DFA7', weight:1, fillColor:'#F2DFA7', fillOpacity:.45 },
+  greens:   { color:'#B9F5C6', weight:2, fillColor:'#8BE39F', fillOpacity:.35 }
+};
+const holeTag = (n, at) => L.marker(at, { icon: L.divIcon({ className:'hole-tag', html: String(n), iconSize:[26,26] }), interactive:false, keyboard:false });
+/* whole-course layer, shown on the overview */
 function drawOSM(F){
-  osmLayer?.remove(); osmLayer = L.layerGroup().addTo(map);
-  const fill = (arr, s) => arr.forEach(p => p.length > 2 && L.polygon(p, { ...s, interactive:false }).addTo(osmLayer));
-  fill(F.fairways, { color:'#7CD992', weight:1, opacity:.5, fillColor:'#5FCB7A', fillOpacity:.15 });
-  fill(F.tees,     { color:'#EAF3FF', weight:1, fillColor:'#EAF3FF', fillOpacity:.25 });
-  fill(F.water,    { color:'#4FB3FF', weight:1, fillColor:'#4FB3FF', fillOpacity:.3 });
-  fill(F.bunkers,  { color:'#F2DFA7', weight:1, fillColor:'#F2DFA7', fillOpacity:.45 });
-  fill(F.greens,   { color:'#B9F5C6', weight:2, fillColor:'#8BE39F', fillOpacity:.35 });
+  osmLayer?.remove(); osmLayer = L.layerGroup();
+  for (const [kind, st] of Object.entries(STYLE)) F[kind].forEach(p => p.length > 2 && L.polygon(p, { ...st, interactive:false }).addTo(osmLayer));
   F.holes.forEach(h => {
     L.polyline(h.line, { color:'#EAF3FF', weight:2, opacity:.8, dashArray:'6 6', interactive:false }).addTo(osmLayer);
-    L.marker(h.line[0], { icon: L.divIcon({ className:'hole-tag', html: String(h.ref), iconSize:[26,26] }), keyboard:false })
-      .on('click', () => { if (pinning) return; hole = h.ref; renderHole(); }).addTo(osmLayer);
+    holeTag(h.ref, h.line[0]).addTo(osmLayer);
   });
+  if (mode === 'overview') osmLayer.addTo(map);
+}
+/* metres from a point to a polyline */
+function nearLine(p, line){
+  const k = Math.cos(p[0]*Math.PI/180), M = 111320; let best = Infinity;
+  for (let i = 1; i < line.length; i++){
+    const ax = (line[i-1][1]-p[1])*k*M, ay = (line[i-1][0]-p[0])*M, bx = (line[i][1]-p[1])*k*M, by = (line[i][0]-p[0])*M;
+    const dx = bx-ax, dy = by-ay, t = Math.max(0, Math.min(1, -(ax*dx + ay*dy)/((dx*dx + dy*dy) || 1)));
+    best = Math.min(best, Math.hypot(ax + t*dx, ay + t*dy));
+  }
+  return best;
+}
+/* only the features that belong to one hole */
+function drawHoleFeatures(h, greenPoly, layer){
+  for (const [kind, st] of Object.entries(STYLE)) for (const p of osmData[kind]){
+    if (p.length < 3) continue;
+    const near = kind === 'greens' ? p === greenPoly
+      : kind === 'fairways' ? p.some(v => nearLine(v, h.line) < 12)
+      : nearLine(centroid(p), h.line) < (kind === 'tees' ? 30 : 45);
+    if (near) L.polygon(p, { ...st, interactive:false }).addTo(layer);
+  }
+  holeTag(h.ref, h.line[0]).addTo(layer);
 }
 
 function holeCount(){ return course.holes?.length || Math.max(18, ...(osmData?.holes.map(h => h.ref) || [0])); }
@@ -401,25 +434,45 @@ function holeInfo(n){
 
 /* ---------- screens ---------- */
 function openMap(k){
-  course = k; hole = 1; pinning = false; statusDismissed = false;   // new round: show the message again
+  course = k; hole = 1; pinning = false; lastStatus = null; statusDismissed = false;
   $('#mapCourse').textContent = k.name; $('#mapPlace').textContent = k.place;
   $('#mapScreen').hidden = false;
-  if (!window.L) { showNoMap(); renderHole(); return; }
-  if (!map){
-    map = L.map('map', { zoomControl:false, attributionControl:true, fadeAnimation:false }).setView(k.center, k.zoom);
-    const layer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-      { maxZoom:20, maxNativeZoom:19, attribution:'Imagery © Esri, Maxar · Course data © OpenStreetMap contributors' }).addTo(map);
-    layer.on('tileload', () => { tilesOk = true; });
-    layer.on('tileerror', () => { setTimeout(() => { if (!tilesOk) showNoMap(); }, 1500); });
-    setTimeout(() => { if (!tilesOk) showNoMap(); }, 6000);
-    map.on('click', e => { if (!pinning) return;
-      (greens[course.id] ||= {})[hole] = [e.latlng.lat, e.latlng.lng]; saveGreens();
-      pinning = false; renderHole(); });
-  } else map.setView(k.center, k.zoom);
-  setTimeout(() => map.invalidateSize(), 60);
-  renderHole(false);
+  if (window.L){
+    if (!map){
+      map = L.map('map', { zoomControl:false, attributionControl:true, fadeAnimation:false }).setView(k.center, k.zoom);
+      const layer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+        { maxZoom:20, maxNativeZoom:19, attribution:'Imagery © Esri, Maxar · Course data © OpenStreetMap contributors' }).addTo(map);
+      layer.on('tileload', () => { tilesOk = true; });
+      map.on('click', e => { if (!pinning || mode !== 'round') return;
+        (greens[course.id] ||= {})[hole] = [e.latlng.lat, e.latlng.lng]; saveGreens();
+        pinning = false; renderHole(); });
+    } else map.setView(k.center, k.zoom);
+    setTimeout(() => map.invalidateSize(), 60);
+  }
+  setMode('overview');
   loadOSM(k);
 }
+function setMode(m){
+  mode = m; const r = m === 'round';
+  $('#holeCard').hidden = !r; $('#startRound').hidden = r; $('#endRound').hidden = !r; $('#mapBack').hidden = r;
+  if (!r) pinning = false;
+  showStatus(); render();
+}
+function render(){
+  if (mode === 'round') return renderHole();
+  if (!map || !course) return;
+  curLayer?.remove(); curLayer = null;
+  if (osmLayer && !map.hasLayer(osmLayer)) osmLayer.addTo(map);
+  fitCourse();
+}
+function fitCourse(){
+  const pts = !osmData ? [] : osmData.boundary.length ? osmData.boundary.flat()
+    : [...osmData.holes.flatMap(h => h.line), ...osmData.greens.flat()];
+  if (pts.length) map.flyToBounds(L.latLngBounds(pts), { paddingTopLeft:[24,96], paddingBottomRight:[24, Math.round(innerHeight*0.32)], duration:.6 });
+  else map.setView(course.center, course.zoom);
+}
+function startRound(){ hole = 1; statusDismissed = false; setMode('round'); }
+function endRound(){ statusDismissed = false; setMode('overview'); }
 
 function renderHole(fly = true){
   const n = hole, info = holeInfo(n), pin = (greens[course.id] || {})[n], gp = info.green?.poly;
@@ -434,8 +487,10 @@ function renderHole(fly = true){
     : info.oh ? 'Hole route found but no green outline. Pin the green to set it.'
     : 'Tap "Pin the green," then tap the green on the map. It\'s saved for every round.';
   if (!map) return;
+  osmLayer?.remove();
   curLayer?.remove(); curLayer = L.layerGroup().addTo(map);
   const pts = [];
+  if (info.oh && osmData) drawHoleFeatures(info.oh, gp, curLayer);
   if (info.oh){ L.polyline(info.oh.line, { color:'#4FB3FF', weight:4, interactive:false }).addTo(curLayer); pts.push(...info.oh.line); }
   if (gp){
     L.polygon(gp, { color:'#4FB3FF', weight:3, fill:false, interactive:false }).addTo(curLayer); pts.push(...gp);
@@ -446,18 +501,17 @@ function renderHole(fly = true){
   if (fly && !pinning){
     if (pts.length > 1) map.flyToBounds(L.latLngBounds(pts), { paddingTopLeft:[30,110], paddingBottomRight:[30,220], maxZoom:18, duration:.6 });
     else if (pts.length) map.flyTo(pts[0], 18, { duration:.6 });
+    else fitCourse();
   }
 }
 $('#holePrev').onclick = () => { const c = holeCount(); hole = hole > 1 ? hole-1 : c; pinning = false; renderHole(); };
 $('#holeNext').onclick = () => { const c = holeCount(); hole = hole < c ? hole+1 : 1; pinning = false; renderHole(); };
 $('#pinGreen').onclick = () => { pinning = !pinning; renderHole(false); };
-$('#showAll').onclick = () => { pinning = false; renderHole(false);
-  const b = osmData?.boundary?.length ? osmData.boundary.flat() : osmData?.holes.flatMap(h => h.line);
-  if (map && b?.length) map.flyToBounds(L.latLngBounds(b), { paddingTopLeft:[20,90], paddingBottomRight:[20,200], duration:.6 });
-  else map?.flyTo(course.center, course.zoom, { duration:.6 }); };
 $('#osmRetry').onclick = () => course && loadOSM(course, true);
 $('#osmClose').onclick = () => { $('#osmStatus').hidden = true; statusDismissed = true; };   // hidden for the rest of this round
-$('#mapBack').onclick = () => { $('#mapScreen').hidden = true; $('#osmStatus').hidden = true; $('#home').hidden = false; course = null; statusDismissed = false; };
+$('#mapBack').onclick = () => { $('#mapScreen').hidden = true; $('#osmStatus').hidden = true; $('#home').hidden = false; course = null; $('#courseInput').value = ''; update(); };
+$('#startRound').onclick = startRound;
+$('#endRound').onclick = endRound;
 
 /* ---------- find any course by name (OpenStreetMap search) ---------- */
 const GKEY = 'caddie-voice-geo';
@@ -483,14 +537,14 @@ async function lookupCourse(name){
   $('#ready').hidden = true; openMap(c);
 }
 
-$('#playBtn').onclick = openSheet;
-$('#cancelBtn').onclick = closeSheet;
-$('#scrim').onclick = closeSheet;
 $('#courseInput').oninput = update;
-$('#courseInput').onkeydown = e => { if (e.key === 'Enter') start(); };
-$('#startBtn').onclick = start;
+$('#courseInput').onkeydown = e => { if (e.key !== 'Enter') return;
+  const typed = $('#courseInput').value.trim().toLowerCase(); if (!typed) return;
+  const m = courseOptions().filter(c => c.name.toLowerCase().includes(typed));
+  choose(m.length === 1 ? m[0].name : $('#courseInput').value); };
+$('#findBtn').onclick = () => choose($('#courseInput').value);
 $('#homeBtn').onclick = () => { $('#ready').hidden = true; $('#home').hidden = false; };
-document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('#sheet').hidden) closeSheet(); });
+update();
 </script>
 
 </body>
