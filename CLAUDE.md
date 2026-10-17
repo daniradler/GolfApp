@@ -26,7 +26,13 @@ saying something works.
 ## App flow (current)
 
 1. **Select a course** (start screen): search box + saved courses. Typing 3+
-   letters searches online (debounced 400 ms).
+   letters searches online (debounced 400 ms). Search is forgiving
+   (`matchScore()`): it queries OpenGolfAPI with the full phrase and with each
+   important word (stop words like golf/course/club/at/the are ignored), retries
+   with 4-letter stems if nothing comes back, then ranks by word matches in any
+   order, partial words and small typos (edit distance, swaps count as one).
+   "bethpage black" → "Black at Bethpage". Nominatim results are merged in when
+   no result matches every word.
 2. **Course overview**: full-screen satellite map fitted to the whole course,
    all mapped holes numbered, tee picker chips, big **Start round** button at
    75% of screen height. ‹ goes back to course list.

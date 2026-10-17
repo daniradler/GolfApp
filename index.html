@@ -227,7 +227,8 @@ function courseOptions(){
 function renderRecent(){
   const box = $('#recentList'), typedRaw = $('#courseInput').value.trim(), typed = typedRaw.toLowerCase();
   box.innerHTML = '';
-  const list = courseOptions().filter(c => !typed || c.name.toLowerCase().includes(typed));
+  const list = !typed ? courseOptions() : courseOptions().map(c => ({ c, sc: matchScore(typedRaw, c.name, c.sub || c.sub0) }))
+    .filter(x => x.sc > 0).sort((a, b) => b.sc - a.sc).map(x => x.c);
   $('#listTitle').textContent = typed ? 'Matches' : 'Courses';
   $('#listTitle').parentElement.hidden = !!typed && !list.length;
   list.slice(0, 8).forEach(c => {
@@ -263,25 +264,92 @@ function queueSearch(){
   if (q.length < 3){ searchSeq++; results = []; $('#resultsBox').hidden = true; return; }
   searchT = setTimeout(() => runSearch(q), 400);
 }
+/* ---------- forgiving name matching ----------
+   "bethpage black" should find "Black at Bethpage": compare important words in any
+   order, accept partial words ("beth") and small typos ("bethpge"). */
+const STOP = new Set(['golf','course','courses','club','country','cc','gc','g','c','the','at','of','and','links','park','state','resort','the']);
+const norm = t => (t || '').toLowerCase().replace(/&/g, ' and ').replace(/['’.]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
+const words = t => norm(t).split(' ').filter(w => w && !STOP.has(w));
+function lev(a, b){
+  if (Math.abs(a.length - b.length) > 2) return 3;
+  /* edit distance where swapping two neighbouring letters counts as one typo */
+  const d = Array.from({ length: a.length + 1 }, (_, i) => [i, ...Array(b.length).fill(0)]);
+  for (let j = 1; j <= b.length; j++) d[0][j] = j;
+  for (let i = 1; i <= a.length; i++) for (let j = 1; j <= b.length; j++){
+    d[i][j] = Math.min(d[i-1][j] + 1, d[i][j-1] + 1, d[i-1][j-1] + (a[i-1] === b[j-1] ? 0 : 1));
+    if (i > 1 && j > 1 && a[i-1] === b[j-2] && a[i-2] === b[j-1]) d[i][j] = Math.min(d[i][j], d[i-2][j-2] + 1);
+  }
+  return d[a.length][b.length];
+}
+function wordScore(t, ws){
+  let best = 0;
+  for (const w of ws){
+    const sc = w === t ? 3
+      : (w.startsWith(t) && t.length >= 2) || (t.startsWith(w) && w.length >= 4) ? 2.2
+      : t.length >= 4 && lev(t, w) <= (t.length >= 7 ? 2 : 1) ? 1.6 : 0;
+    if (sc > best) best = sc;
+  }
+  return best;
+}
+/* 0 = no match; higher = better. Words found in the town/state count half. */
+function matchScore(q, name, extra){
+  const qt = words(q); if (!qt.length) return norm(name).includes(norm(q)) ? 1 : 0;
+  const nw = words(name), ew = words(extra || '');
+  let sum = 0, hit = 0, inName = 0;
+  for (const t of qt){
+    const n = wordScore(t, nw), sc = n || wordScore(t, ew) * 0.5;
+    if (sc) hit++; if (n) inName++; sum += sc;
+  }
+  if (!hit) return 0;
+  return sum / qt.length + (hit === qt.length && inName ? 2 : 0) - (nw.length > qt.length + 2 ? 0.2 : 0);
+}
+const rank = (q, list) => list.map(r => ({ ...r, score: matchScore(q, r.name, r.sub) }))
+  .filter(r => r.score > 0).sort((a, b) => b.score - a.score);
+
+async function ogaSearch(term){
+  const d = await getJSON(`${OGA}/v1/courses/search?q=${encodeURIComponent(term)}`);
+  return (d.courses || []).slice(0, 25).map(c => ({ src:'oga', id:c.id, name:c.course_name || c.name,
+    sub:[[c.city, c.state].filter(Boolean).join(', '), c.par && `Par ${c.par}`].filter(Boolean).join(' · '), center:[c.latitude, c.longitude] }));
+}
+async function osmSearch(q){
+  const qq = q + (/golf|country club|links/i.test(q) ? '' : ' golf');
+  const d = await getJSON('https://nominatim.openstreetmap.org/search?format=jsonv2&limit=10&q=' + encodeURIComponent(qq));
+  return d.filter(x => x.type === 'golf_course' || /golf/i.test(x.display_name)).map(x => {
+    const parts = x.display_name.split(',').map(t => t.trim());
+    return { src:'osm', id:`osm-${x.osm_type}-${x.osm_id}`, name:parts[0], sub:parts.slice(1, 3).join(', ') + ' · Map only', center:[+x.lat, +x.lon] }; });
+}
 async function runSearch(q){
   const seq = ++searchSeq;
   showResults(null, 'Searching…');
-  let list = [], note = '';
-  try {
-    const d = await getJSON(`${OGA}/v1/courses/search?q=${encodeURIComponent(q)}`);
-    list = (d.courses || []).slice(0, 8).map(c => ({ src:'oga', id:c.id, name:c.course_name || c.name,
-      sub:[[c.city, c.state].filter(Boolean).join(', '), c.par && `Par ${c.par}`].filter(Boolean).join(' · '), center:[c.latitude, c.longitude] }));
-  } catch { note = 'Scorecard search is unavailable right now. These results are map only.'; }
-  if (!list.length){
-    try {
-      const qq = q + (/golf|country club|links/i.test(q) ? '' : ' golf');
-      const d = await getJSON('https://nominatim.openstreetmap.org/search?format=jsonv2&limit=8&q=' + encodeURIComponent(qq));
-      list = d.filter(x => x.type === 'golf_course' || /golf/i.test(x.display_name)).slice(0, 6).map(x => {
-        const parts = x.display_name.split(',').map(t => t.trim());
-        return { src:'osm', id:`osm-${x.osm_type}-${x.osm_id}`, name:parts[0], sub:parts.slice(1, 3).join(', ') + ' · Map only', center:[+x.lat, +x.lon] }; });
-    } catch { if (seq === searchSeq) showResults([], "Couldn't reach course search. Check your signal and try again."); return; }
+  const qt = words(q);
+  /* the full phrase plus each important word on its own, so word order and extra words don't matter */
+  const terms = [...new Set([q, ...qt.filter(t => t.length >= 3)])].slice(0, 4);
+  let pool = [], ogaOk = false;
+  const runOga = async list => {
+    const res = await Promise.allSettled(list.map(ogaSearch));
+    res.forEach(r => { if (r.status === 'fulfilled'){ ogaOk = true; pool.push(...r.value); } });
+  };
+  await runOga(terms);
+  /* nothing at all? maybe a typo — try the first letters of each long word */
+  if (ogaOk && !pool.length){
+    const stems = [...new Set(qt.filter(t => t.length >= 5).map(t => t.slice(0, 4)))].slice(0, 3);
+    if (stems.length) await runOga(stems);
   }
   if (seq !== searchSeq) return;
+  const seen = new Set();
+  let list = rank(q, pool.filter(r => !seen.has(r.id) && seen.add(r.id)));
+  const strong = list.length && list[0].score >= 4;      // every word matched
+  if (!strong){
+    try {
+      const osm = rank(q, await osmSearch(q));
+      if (seq !== searchSeq) return;
+      const names = new Set(list.map(r => norm(r.name)));
+      list = [...list, ...osm.filter(r => !names.has(norm(r.name)))].sort((a, b) => b.score - a.score);
+    } catch { if (!list.length){ if (seq === searchSeq) showResults([], "Couldn't reach course search. Check your signal and try again."); return; } }
+  }
+  if (seq !== searchSeq) return;
+  list = list.slice(0, 8);
+  const note = !ogaOk && list.length ? 'Scorecard search is unavailable right now. These results are map only.' : '';
   showResults(list, list.length ? note : 'No courses found. Try adding the town or state.');
 }
 function showResults(list, msg){
@@ -289,10 +357,10 @@ function showResults(list, msg){
   $('#resultsBox').hidden = false;
   const box = $('#resultsList'); box.innerHTML = '';
   if (msg){ const p = document.createElement('p'); p.className = 'empty'; p.textContent = msg; box.appendChild(p); }
-  results.forEach(r => {
+  results.forEach((r, i) => {
     const b = document.createElement('button'); b.className = 'course';
     const n = document.createElement('span'); n.textContent = r.name;
-    const d = document.createElement('small'); d.textContent = r.sub; b.append(n, d);
+    const d = document.createElement('small'); d.textContent = (i === 0 && results.length > 1 && r.score >= 3 ? 'Best match · ' : '') + r.sub; b.append(n, d);
     b.onclick = () => openResult(r); box.appendChild(b);
   });
 }
@@ -661,7 +729,7 @@ async function lookupCourse(name){
 $('#courseInput').oninput = () => { update(); queueSearch(); };
 $('#courseInput').onkeydown = e => { if (e.key !== 'Enter') return; e.preventDefault();
   const q = $('#courseInput').value.trim(); if (!q) return;
-  const local = courseOptions().filter(c => c.name.toLowerCase().includes(q.toLowerCase()));
+  const local = courseOptions().filter(c => matchScore(q, c.name, c.sub || c.sub0) >= 4);
   if (local.length === 1) return openEntry(local[0]);
   if (results.length) return openResult(results[0]);
   clearTimeout(searchT); runSearch(q); };
