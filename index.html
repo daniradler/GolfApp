@@ -526,7 +526,8 @@ function greenFor(h){
 }
 
 function readCache(id){ try { const c = JSON.parse(localStorage.getItem(OKEY + id));
-  return c && Date.now() - c.ts < CACHE_DAYS*864e5 ? c.F : null; } catch { return null; } }
+  /* only trust saved maps that actually contain something; empty ones get looked up again */
+  return c && Date.now() - c.ts < CACHE_DAYS*864e5 && (c.F.holes?.length || c.F.greens?.length) ? c.F : null; } catch { return null; } }
 function writeCache(id, F){ try { localStorage.setItem(OKEY + id, JSON.stringify({ ts: Date.now(), F })); } catch {} }
 
 /* hide preferences, remembered on this phone */
@@ -559,7 +560,8 @@ async function loadOSM(k, force){
       if (F2.holes.length > F.holes.length || (!F.holes.length && F2.greens.length > F.greens.length)){ F2.boundary = F.boundary; F = F2; } }
     if (course !== k) return;
     if (k.osm && k.osm.holes.length >= F.holes.length){ if (force) applyOSM(k, k.osm, 'built-in'); return; }
-    writeCache(k.id, F); applyOSM(k, F, 'live');
+    if (F.holes.length || F.greens.length) writeCache(k.id, F);   // never save an empty result
+    applyOSM(k, F, 'live');
   } catch {
     if (course !== k) return;
     if (k.osm) return applyOSM(k, k.osm, 'built-in');
