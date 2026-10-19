@@ -70,6 +70,7 @@ The app runs entirely in the browser, but it loads these public services:
 |---|---|---|
 | Map library (Leaflet 1.9.4) | cdnjs.cloudflare.com | The map. Without it the screens work but no map shows |
 | Satellite photos | server.arcgisonline.com (Esri) | Satellite background |
+| Street map | tile.openstreetmap.org | The Map view (Map / Satellite button) |
 | Course search and scorecards | api.opengolfapi.org | Search results with par, yardage and tees |
 | Course search fallback | nominatim.openstreetmap.org | "Map only" results if OpenGolfAPI is unavailable |
 | Hole layouts | overpass-api.de, overpass.kumi.systems | Greens, fairways, bunkers and hole routes |

@@ -58,6 +58,11 @@ saying something works.
 | Search fallback | Nominatim | `format=jsonv2`, prefers `type=golf_course` |
 | Hole layouts | Overpass API (overpass-api.de, then overpass.kumi.systems) | First query: features inside the `leisure=golf_course` area around the course center; if < 18 holes, retries with a 1500 m radius and keeps whichever has more holes. Tags used: `golf=hole` (ref, par, handicap, line tee→green), `green`, `tee`, `fairway`, `bunker`, `*water_hazard`, `natural=water`. |
 | Satellite | Esri World Imagery | attribution shown on the map |
+| Street map | OpenStreetMap standard tiles (tile.openstreetmap.org) | Map / Satellite button (`setBase()`), choice saved in `caddie-voice-layer`. Light personal use only under the OSM tile policy; switch to a commercial tile provider before wide release. |
+
+Bunkers include plain `natural=sand`; water includes `natural=water` ways and
+relations. Many courses have greens/fairways but no `golf=hole` lines: those
+holes show every mapped feature in the round view so the map is never blank.
 
 Front/middle/back of green: green polygon nearest the end of the hole line;
 middle = centroid; front/back = extremes projected along the last segment of

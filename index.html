@@ -135,6 +135,8 @@ input::placeholder{color:var(--mist);opacity:.7}
 @media (prefers-reduced-motion:no-preference){.start-round:active{transform:translate(-50%,-50%) scale(.97)}}
 .end{margin-left:auto;flex:0 0 auto;background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:999px;padding:10px 16px;font-weight:600;font-size:15px}
 .topbar h2{flex:1}
+.layer-btn{position:absolute;z-index:1100;right:max(12px,env(safe-area-inset-right,0px));top:calc(128px + env(safe-area-inset-top,0px));
+  background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:999px;padding:10px 14px;font-weight:600;font-size:14px;box-shadow:0 2px 8px rgba(0,0,0,.35)}
 .tees{position:absolute;z-index:1100;left:50%;transform:translateX(-50%);bottom:calc(25% + 52px);display:flex;gap:8px;flex-wrap:wrap;justify-content:center;width:min(380px,calc(100% - 24px))}
 .tee{background:rgba(18,56,95,.94);color:var(--ink);border:1px solid var(--line);border-radius:999px;padding:8px 14px;font-size:14px;font-weight:600;font-variant-numeric:tabular-nums}
 .tee[aria-pressed="true"]{background:var(--ink);color:var(--play-ink);border-color:var(--ink)}
@@ -188,6 +190,7 @@ input::placeholder{color:var(--mist);opacity:.7}
     <button class="end" id="endRound" hidden>End round</button>
   </div>
   <div class="osm-status" id="osmStatus" role="status" hidden><span id="osmText"></span><button id="osmRetry" hidden>Retry</button><button class="x" id="osmClose" aria-label="Hide this message">×</button></div>
+  <button class="layer-btn" id="layerBtn" aria-label="Switch map style">Map</button>
   <div class="tees" id="teeRow" role="group" aria-label="Tees" hidden></div>
   <button class="play start-round" id="startRound">Start round</button>
   <div class="holecard" id="holeCard" hidden><div class="holecard-in">
@@ -478,10 +481,10 @@ const courseQuery = ([la, lo]) => `[out:json][timeout:25];
 (way["leisure"="golf_course"](around:500,${la},${lo});relation["leisure"="golf_course"](around:500,${la},${lo}););
 out geom;
 map_to_area->.a;
-(way["golf"](area.a);node["golf"="pin"](area.a);relation["golf"](area.a);way["natural"="water"](area.a););
+(way["golf"](area.a);node["golf"="pin"](area.a);relation["golf"](area.a);way["natural"~"^(water|sand)$"](area.a);relation["natural"="water"](area.a););
 out geom;`;
 const nearQuery = ([la, lo]) => `[out:json][timeout:25];
-(way["golf"](around:1500,${la},${lo});node["golf"="pin"](around:1500,${la},${lo});relation["golf"](around:1500,${la},${lo}););
+(way["golf"](around:1500,${la},${lo});node["golf"="pin"](around:1500,${la},${lo});relation["golf"](around:1500,${la},${lo});way["natural"~"^(water|sand)$"](around:1200,${la},${lo}););
 out geom;`;
 
 function parseOSM(json){
@@ -503,7 +506,7 @@ function parseOSM(json){
     else if (t.golf === 'green') F.greens.push(...g);
     else if (t.golf === 'tee') F.tees.push(...g);
     else if (t.golf === 'fairway') F.fairways.push(...g);
-    else if (t.golf === 'bunker') F.bunkers.push(...g);
+    else if (t.golf === 'bunker' || t.natural === 'sand') F.bunkers.push(...g);
     else if (/water_hazard/.test(t.golf || '') || t.natural === 'water') F.water.push(...g);
   }
   F.holes.sort((a, b) => a.ref - b.ref);
@@ -627,6 +630,16 @@ function holeInfo(n){
            hcp: sc?.[2] ?? oh?.hcp, oh, green: oh ? greenFor(oh) : null };
 }
 
+/* ---------- satellite photo or OpenStreetMap's drawn map ---------- */
+const LKEY = 'caddie-voice-layer';
+let baseLayers = null, baseName = (() => { try { return localStorage.getItem(LKEY) === 'map' ? 'map' : 'sat'; } catch { return 'sat'; } })();
+function setBase(name){
+  baseName = name; try { localStorage.setItem(LKEY, name); } catch {}
+  if (baseLayers && map){ Object.entries(baseLayers).forEach(([k, l]) => k === name ? l.addTo(map) : l.remove()); }
+  $('#layerBtn').textContent = name === 'sat' ? 'Map' : 'Satellite';
+}
+$('#layerBtn').onclick = () => setBase(baseName === 'sat' ? 'map' : 'sat');
+
 /* ---------- screens ---------- */
 function openMap(k){
   course = k; hole = 1; pinning = false; lastStatus = null; statusDismissed = false;
@@ -635,9 +648,14 @@ function openMap(k){
   if (window.L){
     if (!map){
       map = L.map('map', { zoomControl:false, attributionControl:true, fadeAnimation:false }).setView(k.center, k.zoom);
-      const layer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-        { maxZoom:20, maxNativeZoom:19, attribution:'Imagery © Esri, Maxar · Course data © OpenStreetMap contributors' }).addTo(map);
-      layer.on('tileload', () => { tilesOk = true; });
+      baseLayers = {
+        sat: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+          { maxZoom:20, maxNativeZoom:19, attribution:'Imagery © Esri, Maxar · Course data © OpenStreetMap contributors' }),
+        map: L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+          { maxZoom:20, maxNativeZoom:19, attribution:'© OpenStreetMap contributors' })
+      };
+      Object.values(baseLayers).forEach(l => l.on('tileload', () => { tilesOk = true; }));
+      setBase(baseName);
       map.on('click', e => { if (!pinning || mode !== 'round') return;
         (greens[course.id] ||= {})[hole] = [e.latlng.lat, e.latlng.lng]; saveGreens();
         pinning = false; renderHole(); });
@@ -681,12 +699,15 @@ function renderHole(fly = true){
     : pin ? `Using your green pin for hole ${n}.`
     : gp ? 'Green mapped from OpenStreetMap: front, middle and back.'
     : info.oh ? 'Hole route found but no green outline. Pin the green to set it.'
+    : osmData?.greens.length ? `This hole isn't labeled in OpenStreetMap, so the whole course is shown. Tap "Pin the green," then tap hole ${n}'s green.`
     : 'Tap "Pin the green," then tap the green on the map. It\'s saved for every round.';
   if (!map) return;
   osmLayer?.remove();
   curLayer?.remove(); curLayer = L.layerGroup().addTo(map);
   const pts = [];
   if (info.oh && osmData) drawHoleFeatures(info.oh, gp, curLayer);
+  const showAll = !info.oh && osmData && (osmData.greens.length || osmData.fairways.length);
+  if (showAll) for (const [kind, st] of Object.entries(STYLE)) osmData[kind].forEach(p => p.length > 2 && L.polygon(p, { ...st, interactive:false }).addTo(curLayer));
   if (info.oh){ L.polyline(info.oh.line, { color:'#4FB3FF', weight:4, interactive:false }).addTo(curLayer); pts.push(...info.oh.line); }
   if (gp){
     L.polygon(gp, { color:'#4FB3FF', weight:3, fill:false, interactive:false }).addTo(curLayer); pts.push(...gp);

@@ -1,11 +1,11 @@
 /* Caddie Voice service worker: lets the app open with weak or no signal.
    - The app page: try the network first (so updates show up), fall back to the saved copy.
    - App files, map library, fonts: saved on first use, served from the phone after that.
-   - Satellite map tiles: saved as you view them (up to ~1500), so a course you've
+   - Satellite and OpenStreetMap map tiles: saved as you view them (up to ~1500), so a course you've
      looked at before still shows its photo with poor signal.
    - Course search and map data are NOT handled here; the app already saves those itself.
    Bump VERSION whenever this file changes. */
-const VERSION = 'v1';
+const VERSION = 'v2';
 const SHELL = `cv-shell-${VERSION}`, TILES = 'cv-tiles', MAX_TILES = 1500;
 const SHELL_FILES = ['./', './index.html', './manifest.webmanifest',
   './icons/icon-192.png', './icons/icon-512.png', './icons/apple-touch-icon.png', './icons/favicon-64.png'];
@@ -52,7 +52,7 @@ self.addEventListener('fetch', e => {
   }
 
   // Satellite tiles: saved copy first, otherwise download and save.
-  if (url.hostname === 'server.arcgisonline.com'){
+  if (url.hostname === 'server.arcgisonline.com' || url.hostname === 'tile.openstreetmap.org'){
     e.respondWith((async () => {
       const c = await caches.open(TILES), hit = await c.match(req);
       if (hit) return hit;
