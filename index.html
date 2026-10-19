@@ -563,24 +563,45 @@ function showStatus(){
   $('#osmRetry').hidden = !st.btn; if (st.btn) $('#osmRetry').textContent = st.btn;
 }
 
+const osmHoleCount = j => (j?.elements || []).filter(e => e.tags?.golf === 'hole').length;
+/* inside-the-boundary result, unless the wider circle found more */
+function pickOSM(area, near){
+  let F = area ? parseOSM(area) : null;
+  if (near){
+    const F2 = parseOSM(near);
+    if (!F || (F.holes.length < 18 && (F2.holes.length > F.holes.length || (!F.holes.length && F2.greens.length > F.greens.length)))){ if (F) F2.boundary = F.boundary; F = F2; }
+  }
+  return F;
+}
+/* hand data this phone fetched itself to the course-data service (best effort) */
+function shareCourse(la, lo, area, near){
+  if (location.protocol !== 'https:' && !/^(localhost|127\.0\.0\.1)$/.test(location.hostname)) return;
+  try { fetch(`/api/course?lat=${la}&lon=${lo}`, { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ area, near }), keepalive: true }).catch(() => {}); } catch {}
+}
 async function loadOSM(k, force){
   osmData = null; rawOSM = null; osmLayer?.remove(); curLayer?.remove();
   const cached = !force && readCache(k.id);
   if (cached) return applyOSM(k, cached, 'saved');
   if (k.osm && !force) applyOSM(k, k.osm, 'built-in');   // show built-in layout now; check for newer data quietly
   else setStatus('Looking up hole layouts on OpenStreetMap…');
-  /* two separate lookups: inside the course boundary, then a wider circle. One failing
-     (a busy free server) no longer throws away what the other found. */
-  let F = null, err = null;
-  try { F = parseOSM(await overpass(courseQuery(k.center))); } catch (e){ err = e; }
+  const [la, lo] = k.center.map(v => (+v).toFixed(5));
+  let area = null, near = null, err = null, fromService = false;
+  /* 1. Caddie Voice's own course-data service (Netlify): saved copies, and it retries OpenStreetMap for us */
+  try {
+    const d = await getJSON(`/api/course?lat=${la}&lon=${lo}${force ? '&fresh=1' : ''}`, 15000);
+    if (d && (d.area || d.near)){ area = d.area; near = d.near; fromService = true; }
+  } catch (e){ err = e; }
   if (course !== k) return;
-  if (!F || F.holes.length < 18){
-    try {
-      const F2 = parseOSM(await overpass(nearQuery(k.center)));
-      if (!F || F2.holes.length > F.holes.length || (!F.holes.length && F2.greens.length > F.greens.length)){ if (F) F2.boundary = F.boundary; F = F2; }
-    } catch (e){ err = err || e; }
+  /* 2. straight to OpenStreetMap: inside the course boundary, then a wider circle.
+        One failing (a busy free server) doesn't throw away what the other found. */
+  if (!fromService){
+    try { area = await overpass(courseQuery(k.center)); } catch (e){ err = e; }
+    if (course !== k) return;
+    if (!area || osmHoleCount(area) < 18){ try { near = await overpass(nearQuery(k.center)); } catch (e){ err = err || e; } }
+    if (course !== k) return;
+    if (area || near) shareCourse(la, lo, area, near);   // save it on the service for everyone
   }
-  if (course !== k) return;
+  const F = pickOSM(area, near);
   try {
     if (!F) throw err || new Error('no answer');
     if (k.osm && k.osm.holes.length >= F.holes.length){ if (force) applyOSM(k, k.osm, 'built-in'); return; }

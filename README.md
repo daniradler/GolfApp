@@ -73,10 +73,17 @@ The app runs entirely in the browser, but it loads these public services:
 | Street map | tile.openstreetmap.org | The Map view (Map / Satellite button) |
 | Course search and scorecards | api.opengolfapi.org | Search results with par, yardage and tees |
 | Course search fallback | nominatim.openstreetmap.org | "Map only" results if OpenGolfAPI is unavailable |
-| Hole layouts | overpass-api.de, overpass.kumi.systems | Greens, fairways, bunkers and hole routes |
+| Hole layouts | the site's own `/api/course` service (Netlify), which fetches from OpenStreetMap's Overpass servers and saves each course | Greens, fairways, bunkers and hole routes |
 | Fonts | fonts.googleapis.com | Typefaces (falls back to system fonts) |
 
 No API keys or accounts are needed.
+
+## Course-data service
+
+`netlify/functions/course.mjs` runs on Netlify at `/api/course`. It fetches a
+course's map data from OpenStreetMap once, saves it (Netlify Blobs) for 30 days
+and serves that copy to every phone. When running locally there is no service;
+the app goes straight to OpenStreetMap instead, so everything still works.
 
 ## Saved data
 

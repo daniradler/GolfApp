@@ -25,6 +25,19 @@ saying something works.
   **Bump `VERSION` in sw.js whenever sw.js or the list of app files changes.**
   `netlify.toml` sets no-cache on sw.js/index.html so updates arrive.
   Registered at the end of index.html only on https/localhost.
+- **Course-data service:** `netlify/functions/course.mjs` at `/api/course?lat=&lon=`
+  (Netlify Functions v2 + Netlify Blobs store `course-maps`, key `v1/lat4,lon4`).
+  GET returns `{ts, area, near}` (raw Overpass JSON for the boundary query and the
+  1.5 km query; same queries as index.html — keep them in sync). Saved copies are
+  served for 30 days (empty results 1 day); on a miss it queries Overpass itself
+  (both queries in parallel, 3 servers, 9 s budget for Netlify's 10 s limit);
+  if everything fails it serves a stale copy or 502. POST lets a phone that
+  fetched directly share `{area, near}` (≤3 MB, non-empty, not replacing a
+  better copy). `fresh=1` forces a refetch (Retry button). Logic is in
+  `createHandler()` so it can be tested with a fake store/fetch.
+  The app tries the service first (`loadOSM`), falls back to Overpass directly,
+  then `shareCourse()`s the result. On localhost (no service) the 404 just
+  falls through to direct Overpass.
 - **Deploy:** Netlify is linked to this repo. Every push to `main` goes live in
   about a minute. There is no staging site, so test locally before pushing.
 - **Run locally:** `python3 -m http.server 8000` or `npm start`, then

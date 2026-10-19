@@ -1,3 +1,7 @@
+# Course-data service lives in netlify/functions (see course.mjs).
+[functions]
+  node_bundler = "esbuild"
+
 # Make sure phones always check for a new version of the app.
 [[headers]]
   for = "/sw.js"
