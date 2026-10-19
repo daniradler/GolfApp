@@ -64,6 +64,16 @@ Bunkers include plain `natural=sand`; water includes `natural=water` ways and
 relations. Many courses have greens/fairways but no `golf=hole` lines: those
 holes show every mapped feature in the round view so the map is never blank.
 
+**Holes without route lines (`inferHoles()`, run in `applyOSM`):** (1) a green
+tagged `ref=N` (+ the farthest tee tagged `ref=N`, else the previous green)
+becomes hole N, marked `est:'label'`; (2) with scorecard yardages, a beam search
+pairs tees and unused greens, cost = yardage fit (straight line vs scorecard,
+doglegs allowed) + walk from previous green to tee (`/120 m, cap 3`), keeping
+the 150 best routes; result marked `est:'guess'` and shown with a hint to pin the
+green if wrong. On 40 generated 18-hole courses: labeled greens 100% right;
+unlabeled 94% placed, 90% of those on the right green. Re-runs when a scorecard
+arrives later (`enrich`). Raw Overpass data is kept in `rawOSM`.
+
 Front/middle/back of green: green polygon nearest the end of the hole line;
 middle = centroid; front/back = extremes projected along the last segment of
 the hole line (`greenFor()`).

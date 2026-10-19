@@ -430,7 +430,9 @@ async function enrich(k){
   if (!k.ogaId || k.tees) return;
   let t; try { t = await scorecard(k.ogaId); } catch { return; }
   attachScorecard(k, t);
-  if (course === k){ $('#mapPlace').textContent = k.place; renderTees(); if (mode === 'round') renderHole(false); }
+  if (course === k){ $('#mapPlace').textContent = k.place; renderTees();
+    if (rawOSM && osmData){ osmData = inferHoles(rawOSM, k); if (map) drawOSM(osmData); }
+    if (mode === 'round') renderHole(false); }
 }
 function renderTees(){
   const row = $('#teeRow'), tees = course?.tees || [];
@@ -449,7 +451,7 @@ function renderTees(){
 const PKEY = 'caddie-voice-greens';           // your own green pins
 let greens = (() => { try { return JSON.parse(localStorage.getItem(PKEY)) || {}; } catch { return {}; } })();
 const saveGreens = () => { try { localStorage.setItem(PKEY, JSON.stringify(greens)); } catch {} };
-let map, course, hole = 1, pinning = false, tilesOk = false, osmData = null, osmLayer, curLayer, statusT;
+let rawOSM = null, map, course, hole = 1, pinning = false, tilesOk = false, osmData = null, osmLayer, curLayer, statusT;
 
 /* ---------- OpenStreetMap lookup ---------- */
 const OVERPASS = ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter'];
@@ -488,7 +490,7 @@ const nearQuery = ([la, lo]) => `[out:json][timeout:25];
 out geom;`;
 
 function parseOSM(json){
-  const F = { boundary:[], holes:[], greens:[], tees:[], fairways:[], bunkers:[], water:[] };
+  const F = { boundary:[], holes:[], greens:[], tees:[], fairways:[], bunkers:[], water:[], greenRef:[], teeRef:[] };
   const pts = g => g.map(p => [+p.lat.toFixed(6), +p.lon.toFixed(6)]);
   const geomOf = el => el.type === 'way' ? [pts(el.geometry || [])]
     : el.type === 'relation' ? (el.members || []).filter(m => m.geometry && m.role !== 'inner').map(m => pts(m.geometry))
@@ -503,8 +505,8 @@ function parseOSM(json){
       if (ref > 0 && g[0].length > 1 && !seen.has(ref)){ seen.add(ref);
         F.holes.push({ ref, par: +t.par || null, hcp: +t.handicap || null, line: g[0] }); }
     }
-    else if (t.golf === 'green') F.greens.push(...g);
-    else if (t.golf === 'tee') F.tees.push(...g);
+    else if (t.golf === 'green'){ F.greens.push(...g); g.forEach(() => F.greenRef.push(parseInt(t.ref, 10) || null)); }
+    else if (t.golf === 'tee'){ F.tees.push(...g); g.forEach(() => F.teeRef.push(parseInt(t.ref, 10) || null)); }
     else if (t.golf === 'fairway') F.fairways.push(...g);
     else if (t.golf === 'bunker' || t.natural === 'sand') F.bunkers.push(...g);
     else if (/water_hazard/.test(t.golf || '') || t.natural === 'water') F.water.push(...g);
@@ -551,7 +553,7 @@ function showStatus(){
 }
 
 async function loadOSM(k, force){
-  osmData = null; osmLayer?.remove(); curLayer?.remove();
+  osmData = null; rawOSM = null; osmLayer?.remove(); curLayer?.remove();
   const cached = !force && readCache(k.id);
   if (cached) return applyOSM(k, cached, 'saved');
   if (k.osm && !force) applyOSM(k, k.osm, 'built-in');   // show built-in layout now; check for newer data quietly
@@ -572,12 +574,88 @@ async function loadOSM(k, force){
   }
 }
 
+/* ---------- work out holes OpenStreetMap doesn't label with a route line ----------
+   1. A green (and tee) with a hole number written on it → that hole.
+   2. Otherwise, with a scorecard: pair tee boxes and greens whose distance fits each
+      hole's yardage, chaining hole to hole (the next tee is a short walk from the
+      last green). Those holes are marked as estimates. */
+function pairCost(t, g, Y, prevGreen){
+  const r = distM(t, g) / Y;                   // straight-line distance vs. scorecard yardage
+  const fit = r > 1.05 ? (r - 1) * 5 : r < 0.75 ? (1 - r) * 4 : Math.abs(1 - r) * 0.8;   // doglegs play longer than the straight line
+  const walk = prevGreen ? Math.min(distM(prevGreen, t) / 120, 3) : 0;
+  return fit + walk;
+}
+function inferHoles(F, c){
+  const N = c?.holes?.length || 18, out = F.holes.map(h => ({ ...h })), known = new Map(out.map(h => [h.ref, h]));
+  const greenC = F.greens.map(g => g.length > 2 ? centroid(g) : null), teeC = F.tees.map(t => t.length ? centroid(t) : null);
+  const used = new Set();
+  out.forEach(h => {                            // greens already claimed by real route lines
+    const end = h.line[h.line.length - 1]; let bi = -1, bd = 60;
+    F.greens.forEach((g, i) => { if (!greenC[i]) return; const d = inPoly(end, g) ? 0 : distM(end, greenC[i]); if (d < bd){ bd = d; bi = i; } });
+    if (bi >= 0) used.add(bi);
+  });
+  const lastPt = h => h.line[h.line.length - 1];
+  for (let n = 1; n <= N; n++){                 // 1. numbers written on greens / tees
+    if (known.has(n)) continue;
+    const gi = (F.greenRef || []).findIndex((r, i) => r === n && greenC[i] && !used.has(i));
+    if (gi < 0) continue;
+    let tee = null, far = -1;
+    (F.teeRef || []).forEach((r, i) => { if (r === n && teeC[i]){ const d = distM(teeC[i], greenC[gi]); if (d > far){ far = d; tee = teeC[i]; } } });
+    if (!tee && known.get(n - 1)) tee = lastPt(known.get(n - 1));
+    if (!tee) continue;
+    used.add(gi);
+    const h = { ref:n, par:c?.holes?.[n-1]?.[0] ?? null, hcp:c?.holes?.[n-1]?.[2] ?? null, line:[tee, greenC[gi]], est:'label' };
+    out.push(h); known.set(n, h);
+  }
+  const yd = n => c?.holes?.[n-1]?.[1];         // 2. scorecard yardages
+  const missing = []; for (let n = 1; n <= N; n++) if (!known.has(n) && yd(n)) missing.push(n);
+  const free = greenC.map((g, i) => i).filter(i => greenC[i] && !used.has(i)), tees = teeC.filter(Boolean);
+  if (missing.length && free.length && tees.length){
+    /* weigh many routes at once (beam search) and keep the one that fits the whole scorecard best */
+    const SKIP = 2.5, KEEP = 150, PER = 8;
+    const D = tees.map(t => greenC.map(g => g ? distM(t, g) : 0));              // tee → green
+    const walkCache = new Map();
+    const walkFrom = (key, pt) => { if (!walkCache.has(key)) walkCache.set(key, tees.map(t => distM(pt, t))); return walkCache.get(key); };
+    const fitOf = (d, Y) => { const r = d / Y; return r > 1.05 ? (r - 1) * 5 : r < 0.75 ? (1 - r) * 4 : Math.abs(1 - r) * 0.8; };
+    let beam = [{ cost:0, picks:[], taken:new Set(), lastKey:null, lastPt:null }];
+    for (let n = 1; n <= N; n++){
+      if (known.has(n)){ const pt = lastPt(known.get(n)); beam.forEach(st => { st.lastKey = 'k' + n; st.lastPt = pt; }); continue; }
+      if (!yd(n)){ beam.forEach(st => { st.lastKey = null; st.lastPt = null; }); continue; }
+      const Y = yd(n) / M2YD, next = [];
+      for (const st of beam){
+        const W = st.lastKey ? walkFrom(st.lastKey, st.lastPt) : null, opts = [];
+        for (const gi of free){
+          if (st.taken.has(gi)) continue;
+          let bt = -1, bc = Infinity;
+          for (let ti = 0; ti < tees.length; ti++){
+            const cst = fitOf(D[ti][gi], Y) + (W ? Math.min(W[ti] / 120, 3) : 0);
+            if (cst < bc){ bc = cst; bt = ti; }
+          }
+          if (bc < SKIP) opts.push({ gi, ti:bt, c:bc });
+        }
+        opts.sort((x, y) => x.c - y.c).slice(0, PER).forEach(o => {
+          const taken = new Set(st.taken); taken.add(o.gi);
+          next.push({ cost:st.cost + o.c, taken, lastKey:'g' + o.gi, lastPt:greenC[o.gi],
+            picks:[...st.picks, { ref:n, par:c.holes[n-1][0] ?? null, hcp:c.holes[n-1][2] ?? null, line:[tees[o.ti], greenC[o.gi]], est:'guess' }] });
+        });
+        next.push({ ...st, cost:st.cost + SKIP, lastKey:null, lastPt:null });     // or leave this hole out
+      }
+      beam = next.sort((x, y) => x.cost - y.cost).slice(0, KEEP);
+    }
+    beam[0].picks.forEach(h => out.push(h));
+  }
+  out.sort((a, b) => a.ref - b.ref);
+  return { ...F, holes: out };
+}
+
 function applyOSM(k, F, source){
   const fromCache = source === 'saved', builtIn = source === 'built-in';
-  osmData = F;
-  if (map) drawOSM(F);
-  const n = F.holes.length, g = F.greens.length;
-  if (n) setStatus(`${n < 18 ? n + ' of 18' : n} holes mapped from OpenStreetMap` + (fromCache ? ' (saved on this phone)' : builtIn ? ' (built into the app)' : ''), 'Refresh');
+  osmData = inferHoles(F, k); rawOSM = F;
+  if (map) drawOSM(osmData);
+  const real = osmData.holes.filter(h => !h.est).length, est = osmData.holes.length - real, n = real + est, g = F.greens.length;
+  const total = k.holes?.length || 18;
+  if (n) setStatus(`${n < total ? n + ' of ' + total : n} holes mapped from OpenStreetMap` + (est ? ` (${est} worked out from the greens${osmData.holes.some(h => h.est === 'guess') ? ' and scorecard' : ''})` : '')
+    + (fromCache ? ' · saved on this phone' : builtIn ? ' · built into the app' : ''), 'Refresh');
   else if (g) setStatus(`OpenStreetMap has ${g} greens here but no hole routes. Pin each green to link it to a hole.`, 'Refresh');
   else setStatus('OpenStreetMap has no hole detail for this course yet. Pin the greens yourself.', 'Refresh');
   render();
@@ -697,6 +775,8 @@ function renderHole(fly = true){
   $('#pinGreen').textContent = pinning ? 'Tap the green…' : pin ? 'Move green pin' : gp ? 'Adjust green' : 'Pin the green';
   $('#pinHint').textContent = pinning ? `Tap the middle of the green for hole ${n}.`
     : pin ? `Using your green pin for hole ${n}.`
+    : info.oh?.est === 'guess' ? `Hole ${n} worked out from the scorecard yardage. If it's the wrong green, tap "Pin the green".`
+    : info.oh?.est === 'label' && gp ? `Hole ${n} found from the number on its green: front, middle and back.`
     : gp ? 'Green mapped from OpenStreetMap: front, middle and back.'
     : info.oh ? 'Hole route found but no green outline. Pin the green to set it.'
     : osmData?.greens.length ? `This hole isn't labeled in OpenStreetMap, so the whole course is shown. Tap "Pin the green," then tap hole ${n}'s green.`
