@@ -64,9 +64,11 @@ Bunkers include plain `natural=sand`; water includes `natural=water` ways and
 relations. Many courses have greens/fairways but no `golf=hole` lines: those
 holes show every mapped feature in the round view so the map is never blank.
 
-**Holes without route lines (`inferHoles()`, run in `applyOSM`):** (1) a green
-tagged `ref=N` (+ the farthest tee tagged `ref=N`, else the previous green)
-becomes hole N, marked `est:'label'`; (2) with scorecard yardages, a beam search
+**Holes without route lines (`inferHoles()`, run in `applyOSM`):** (1) hole
+numbers anywhere on the map (`holeNum()` reads `ref`, `golf:hole`, `hole`, or a
+name like "Hole 5"/"#5") on greens, flagstick/green points (`golf=pin` nodes),
+tee areas or points, or fairways make hole N (green from the number, tee = farthest
+numbered tee, else previous green, else the green itself), marked `est:'label'`; (2) with scorecard yardages, a beam search
 pairs tees and unused greens, cost = yardage fit (straight line vs scorecard,
 doglegs allowed) + walk from previous green to tee (`/120 m, cap 3`), keeping
 the 150 best routes; result marked `est:'guess'` and shown with a hint to pin the
