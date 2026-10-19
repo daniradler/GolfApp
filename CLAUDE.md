@@ -92,7 +92,7 @@ the hole line (`greenFor()`).
 ## Saved data (localStorage, per web address)
 
 `caddie-voice-courses` recent courses · `caddie-voice-course-{id}` trimmed
-OpenGolfAPI scorecard · `caddie-voice-osm-{id}` Overpass result (30-day
+OpenGolfAPI scorecard · `caddie-voice-osm2-{id}` Overpass result (30-day
 cache) · `caddie-voice-geo` Nominatim lookups · `caddie-voice-greens` user
 green pins `{courseId:{hole:[lat,lng]}}` · `caddie-voice-tee-{courseId}`
 chosen tee · `caddie-voice-hidden` (legacy, mostly unused).

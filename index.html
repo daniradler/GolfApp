@@ -455,7 +455,7 @@ let rawOSM = null, map, course, hole = 1, pinning = false, tilesOk = false, osmD
 
 /* ---------- OpenStreetMap lookup ---------- */
 const OVERPASS = ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter'];
-const OKEY = 'caddie-voice-osm-', M2YD = 1.09361, CACHE_DAYS = 30;
+const OKEY = 'caddie-voice-osm2-'   /* v2: keeps hole-number points; older saves are ignored */, M2YD = 1.09361, CACHE_DAYS = 30;
 function distM(a, b){ const R = 6371000, r = Math.PI/180, dLa = (b[0]-a[0])*r, dLo = (b[1]-a[1])*r;
   const h = Math.sin(dLa/2)**2 + Math.cos(a[0]*r)*Math.cos(b[0]*r)*Math.sin(dLo/2)**2; return 2*R*Math.asin(Math.sqrt(h)); }
 const lineLen = l => l.slice(1).reduce((s, p, i) => s + distM(l[i], p), 0);
