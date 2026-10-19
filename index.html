@@ -454,7 +454,7 @@ const saveGreens = () => { try { localStorage.setItem(PKEY, JSON.stringify(green
 let rawOSM = null, map, course, hole = 1, pinning = false, tilesOk = false, osmData = null, osmLayer, curLayer, statusT;
 
 /* ---------- OpenStreetMap lookup ---------- */
-const OVERPASS = ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter'];
+const OVERPASS = ['https://overpass-api.de/api/interpreter', 'https://maps.mail.ru/osm/tools/overpass/api/interpreter', 'https://overpass.kumi.systems/api/interpreter'];
 const OKEY = 'caddie-voice-osm2-'   /* v2: keeps hole-number points; older saves are ignored */, M2YD = 1.09361, CACHE_DAYS = 30;
 function distM(a, b){ const R = 6371000, r = Math.PI/180, dLa = (b[0]-a[0])*r, dLo = (b[1]-a[1])*r;
   const h = Math.sin(dLa/2)**2 + Math.cos(a[0]*r)*Math.cos(b[0]*r)*Math.sin(dLo/2)**2; return 2*R*Math.asin(Math.sqrt(h)); }
@@ -469,7 +469,7 @@ async function overpass(q){
   let last;
   for (const url of OVERPASS){
     try {
-      const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), 30000);
+      const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), 40000);
       const r = await fetch(url, { method:'POST', body:'data=' + encodeURIComponent(q),
         headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, signal: ctl.signal });
       clearTimeout(t);
@@ -569,19 +569,33 @@ async function loadOSM(k, force){
   if (cached) return applyOSM(k, cached, 'saved');
   if (k.osm && !force) applyOSM(k, k.osm, 'built-in');   // show built-in layout now; check for newer data quietly
   else setStatus('Looking up hole layouts on OpenStreetMap…');
-  try {
-    let F = parseOSM(await overpass(courseQuery(k.center)));
-    if (F.holes.length < 18){
+  /* two separate lookups: inside the course boundary, then a wider circle. One failing
+     (a busy free server) no longer throws away what the other found. */
+  let F = null, err = null;
+  try { F = parseOSM(await overpass(courseQuery(k.center))); } catch (e){ err = e; }
+  if (course !== k) return;
+  if (!F || F.holes.length < 18){
+    try {
       const F2 = parseOSM(await overpass(nearQuery(k.center)));
-      if (F2.holes.length > F.holes.length || (!F.holes.length && F2.greens.length > F.greens.length)){ F2.boundary = F.boundary; F = F2; } }
-    if (course !== k) return;
+      if (!F || F2.holes.length > F.holes.length || (!F.holes.length && F2.greens.length > F.greens.length)){ if (F) F2.boundary = F.boundary; F = F2; }
+    } catch (e){ err = err || e; }
+  }
+  if (course !== k) return;
+  try {
+    if (!F) throw err || new Error('no answer');
     if (k.osm && k.osm.holes.length >= F.holes.length){ if (force) applyOSM(k, k.osm, 'built-in'); return; }
     if (F.holes.length || F.greens.length) writeCache(k.id, F);   // never save an empty result
     applyOSM(k, F, 'live');
-  } catch {
+  } catch (e) {
     if (course !== k) return;
     if (k.osm) return applyOSM(k, k.osm, 'built-in');
-    setStatus("Couldn't reach OpenStreetMap, so only the satellite view is showing.", 'Retry', 0, true);
+    const why = /HTTP (429|504|503)/.test(e?.message) ? 'its free servers are busy right now'
+      : e?.name === 'AbortError' ? 'it took too long to answer'
+      : !navigator.onLine ? 'this phone is offline' : 'the connection failed';
+    setStatus(`Couldn't reach OpenStreetMap (${why}). Trying again shortly…`, 'Retry', 0, true);
+    /* one automatic retry after a short wait */
+    if (!force) setTimeout(() => { if (course === k && !osmData) loadOSM(k, true); }, 20000);
+    else setStatus(`Couldn't reach OpenStreetMap (${why}), so only the satellite view is showing.`, 'Retry', 0, true);
   }
 }
 
