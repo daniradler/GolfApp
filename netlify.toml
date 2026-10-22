@@ -1,3 +1,8 @@
+# Skip the build (costs 0 Netlify credits) when only notes/docs (*.md) changed.
+# Each successful production deploy costs 15 of the free plan's 300 monthly credits.
+[build]
+  ignore = "git diff --quiet $CACHED_COMMIT_REF $COMMIT_REF -- . ':(exclude)*.md'"
+
 # Course-data service lives in netlify/functions (see course.mjs).
 [functions]
   node_bundler = "esbuild"

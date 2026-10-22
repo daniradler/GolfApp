@@ -140,6 +140,13 @@ a real bug once).
 
 ## Working agreements
 
+- **Netlify credits:** the free plan has 300 credits/month and every successful
+  production deploy (= every push to `main` that builds) costs 15 → only ~20
+  live updates a month. Running out pauses deploys and can pause the site.
+  So: **do work on the `dev` branch** (branch deploys cost 0 credits, preview at
+  `dev--<site>.netlify.app` once branch deploys are enabled), batch changes, and
+  merge `dev` → `main` only when the owner says to make it live. Docs-only
+  changes (`*.md`) are skipped by the `ignore` rule in netlify.toml.
 - **GitHub `main` is the source of truth.** More than one place edits this repo
   (Claude Code, the Claude app, a friend). Always `git pull` before editing and
   edit `index.html` in the repo directly; never overwrite it with a copy made
