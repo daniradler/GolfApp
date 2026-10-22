@@ -29,6 +29,7 @@
   --line:#24507F;     /* borders */
   --play:#4FB3FF;     /* button */
   --play-ink:#04182C;
+  --spot:#FFD166;     /* a spot tapped on the map */
   --display:"Barlow Condensed","Arial Narrow",system-ui,sans-serif;
   --body:"Public Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
   color-scheme:dark;
@@ -91,6 +92,19 @@ input::placeholder{color:var(--mist);opacity:.7}
 .pinbtn{flex:1;background:var(--field);color:var(--ink);border:1px solid var(--line);border-radius:12px;padding:12px;font-weight:600;font-size:15px}
 .pinbtn[aria-pressed="true"]{background:var(--play);color:var(--play-ink);border-color:var(--play)}
 .hint{font-size:13px;color:var(--mist);margin:0;text-align:center}
+/* live yardage from the player's GPS position */
+.yards{display:grid;grid-template-columns:1fr 1.3fr 1fr;gap:6px;text-align:center}
+.yards div{background:var(--field);border:1px solid var(--line);border-radius:12px;padding:6px 4px}
+.yards small,.spot small{display:block;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--mist);font-weight:600}
+.yards b,.spot b{display:block;font-family:var(--display);font-weight:800;font-size:30px;line-height:1.05;font-variant-numeric:tabular-nums}
+.yards .mid b{font-size:40px;color:var(--play)}
+/* a spot tapped on the map */
+.spot{display:flex;align-items:center;gap:6px;border:1px solid var(--spot);background:rgba(255,209,102,.1);border-radius:12px;padding:6px 4px 6px 8px;text-align:center}
+.spot div{flex:1}
+.spot b{font-size:26px;color:var(--spot)}
+.spot .x{flex:0 0 auto;width:36px;height:36px;border-radius:50%;background:transparent;color:var(--mist);font-size:24px;line-height:1}
+.spot-tag span{position:absolute;left:0;top:0;transform:translate(-50%,calc(-100% - 14px));white-space:nowrap;background:var(--deep);color:var(--spot);
+  border:1px solid var(--spot);border-radius:10px;padding:4px 8px;font:700 13px/1.25 var(--body);text-align:center;box-shadow:0 2px 6px rgba(0,0,0,.4)}
 .nomap{position:absolute;z-index:1050;left:50%;bottom:calc(200px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);width:min(380px,calc(100% - 24px));background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:10px 14px;display:flex;flex-direction:column;gap:4px;text-align:center}
 .nomap b{font-size:14px!important}.nomap p{font-size:13px!important}
 .nomap b{font-size:16px}
@@ -198,6 +212,17 @@ input::placeholder{color:var(--mist);opacity:.7}
       <button class="step" id="holePrev" aria-label="Previous hole">‹</button>
       <div class="holeinfo"><div class="num" id="holeNum">Hole 1</div><div class="meta" id="holeMeta"></div></div>
       <button class="step" id="holeNext" aria-label="Next hole">›</button>
+    </div>
+    <div class="yards" id="yards" aria-live="polite">
+      <div><small>Front</small><b id="ydF">–</b></div>
+      <div class="mid"><small>Middle</small><b id="ydM">–</b></div>
+      <div><small>Back</small><b id="ydB">–</b></div>
+    </div>
+    <p class="hint" id="gpsNote">Finding your location…</p>
+    <div class="spot" id="spotBox" hidden>
+      <div><small>Spot to green</small><b id="spotGreen">–</b></div>
+      <div><small>You to spot</small><b id="spotMe">–</b></div>
+      <button class="x" id="spotClear" aria-label="Clear the spot">×</button>
     </div>
     <div class="pinrow">
       <button class="pinbtn" id="pinGreen" aria-pressed="false">Pin the green</button>
@@ -483,7 +508,10 @@ function applyTee(c, name){
   const key = (name || '').toLowerCase(), key2 = key.split(/[\s/]/)[0];
   if (c.hd?.length) c.holes = c.hd.map(h => [h.par ?? null, h.yardages?.[key] ?? h.yardages?.[key2] ?? null, h.hcp ?? null]);
   const tee = c.tees?.find(x => x.name === name), par = tee?.par || c.par;
-  c.place = [[c.city, c.state].filter(Boolean).join(', '), par && `Par ${par}`, tee?.yardage && `${tee.yardage.toLocaleString()} yds`]
+  /* no total on file for this tee? add up its holes, if every hole has a yardage */
+  const sum = c.holes?.length && c.holes.every(h => h[1]) ? c.holes.reduce((s, h) => s + h[1], 0) : null;
+  const yds = tee?.yardage || sum;
+  c.place = [[c.city, c.state].filter(Boolean).join(', '), par && `Par ${par}`, yds && `${yds.toLocaleString()} yds`, name && c.tees?.length > 1 && `${name} tees`]
     .filter(Boolean).join(' · ') || c.place;
 }
 /* built-in courses: fetch the full scorecard (all tees) quietly */
@@ -501,7 +529,10 @@ function renderTees(){
   tees.forEach(t => {
     const b = document.createElement('button'); b.className = 'tee';
     b.setAttribute('aria-pressed', t.name === course.tee);
-    b.textContent = t.name + (t.yardage ? ` · ${t.yardage.toLocaleString()}` : '');
+    const key = t.name.toLowerCase(), key2 = key.split(/[\s/]/)[0];
+    const hy = course.hd?.map(h => h.yardages?.[key] ?? h.yardages?.[key2]);
+    const yds = t.yardage || (hy?.length && hy.every(Boolean) ? hy.reduce((s, y) => s + y, 0) : null);
+    b.textContent = t.name + (yds ? ` · ${yds.toLocaleString()}` : '');
     b.onclick = () => { applyTee(course, t.name); try { localStorage.setItem(TKEY + course.id, t.name); } catch {}
       $('#mapPlace').textContent = course.place; renderTees(); };
     row.appendChild(b);
@@ -859,8 +890,10 @@ function openMap(k){
       };
       Object.values(baseLayers).forEach(l => l.on('tileload', () => { tilesOk = true; }));
       setBase(baseName);
-      map.on('click', e => { if (!pinning || mode !== 'round') return;
-        (greens[course.id] ||= {})[hole] = [e.latlng.lat, e.latlng.lng]; saveGreens();
+      map.on('click', e => { if (mode !== 'round') return;
+        const p = [e.latlng.lat, e.latlng.lng];
+        if (!pinning){ spot = p; return drawLive(); }       // any other tap marks a spot to measure
+        (greens[course.id] ||= {})[hole] = p; saveGreens();
         pinning = false; renderHole(); });
     } else map.setView(k.center, k.zoom);
     setTimeout(() => map.invalidateSize(), 60);
@@ -888,13 +921,69 @@ function fitCourse(){
   if (pts.length) map.flyToBounds(L.latLngBounds(pts), { paddingTopLeft:[24,96], paddingBottomRight:[24, Math.round(innerHeight*0.32)], duration:.6 });
   else map.setView(course.center, course.zoom);
 }
-function startRound(){ hole = 1; statusDismissed = false; setMode('round'); }
-function endRound(){ statusDismissed = false; setMode('overview'); }
+function startRound(){ hole = 1; spot = null; statusDismissed = false; startGPS(); setMode('round'); }
+function endRound(){ statusDismissed = false; stopGPS(); setMode('overview'); }
+
+/* ---------- live GPS: yards from you to the green, and to a spot you tap ---------- */
+let me = null, meAcc = 0, gpsWatch = null, gpsErr = null, spot = null, liveLayer;
+function startGPS(){
+  if (gpsWatch != null) return;
+  if (!navigator.geolocation){ gpsErr = 'none'; return; }
+  gpsErr = null;
+  gpsWatch = navigator.geolocation.watchPosition(
+    p => { me = [p.coords.latitude, p.coords.longitude]; meAcc = p.coords.accuracy || 0; gpsErr = null; drawLive(); },
+    e => { gpsErr = e.code === 1 ? 'denied' : 'nofix'; drawLive(); },
+    { enableHighAccuracy:true, maximumAge:2000, timeout:20000 });
+}
+function stopGPS(){
+  if (gpsWatch != null) navigator.geolocation.clearWatch(gpsWatch);
+  gpsWatch = null; me = null; spot = null; liveLayer?.remove(); liveLayer = null;
+}
+const yd = (a, b) => Math.round(distM(a, b) * M2YD);
+/* the green points for the current hole: your own pin is the middle; front/back only from a mapped green */
+function greenTargets(){
+  const info = holeInfo(hole), pin = (greens[course.id] || {})[hole];
+  if (pin) return { mid: pin };
+  return info.green || {};
+}
+function drawLive(){
+  if (mode !== 'round' || !course) return;
+  const g = greenTargets(), far = me && g.mid && yd(me, g.mid) > 1500;
+  const show = (id, pt) => { $(id).textContent = me && pt && !far ? yd(me, pt) : '–'; };
+  show('#ydF', g.front); show('#ydM', g.mid); show('#ydB', g.back);
+  $('#gpsNote').textContent =
+      gpsErr === 'denied' ? 'Location is turned off for this app. Allow location to see yards from where you are.'
+    : gpsErr === 'none' ? "This browser can't share your location."
+    : !me ? (gpsErr === 'nofix' ? 'Still looking for a GPS signal…' : 'Finding your location…')
+    : !g.mid ? 'This green isn\'t on the map yet. Tap "Pin the green" to set it.'
+    : far ? `You're ${(distM(me, g.mid) / 1609.34).toFixed(1)} miles from this green. Yards show when you're on the course.`
+    : `Yards from where you're standing${meAcc > 15 ? ` · GPS within ${Math.round(meAcc * M2YD)} yds` : ''}. Tap the map to measure to a spot.`;
+  $('#spotBox').hidden = !spot;
+  if (spot){
+    $('#spotGreen').textContent = g.mid ? yd(spot, g.mid) : '–';
+    $('#spotMe').textContent = me ? yd(me, spot) : '–';
+  }
+  if (!map) return;
+  liveLayer?.remove(); liveLayer = L.layerGroup().addTo(map);
+  if (me){
+    if (meAcc > 15) L.circle(me, { radius:meAcc, color:'#4FB3FF', weight:1, fillOpacity:.12, interactive:false }).addTo(liveLayer);
+    L.circleMarker(me, { radius:8, color:'#FFFFFF', weight:3, fillColor:'#1E88FF', fillOpacity:1, interactive:false }).addTo(liveLayer);
+  }
+  if (spot){
+    const line = { color:'#FFD166', weight:3, dashArray:'2 8', lineCap:'round', interactive:false };
+    if (me && !far) L.polyline([me, spot], line).addTo(liveLayer);
+    if (g.mid) L.polyline([spot, g.mid], line).addTo(liveLayer);
+    L.circleMarker(spot, { radius:9, color:'#04182C', weight:3, fillColor:'#FFD166', fillOpacity:1, interactive:false }).addTo(liveLayer);
+    const label = [g.mid && `${yd(spot, g.mid)} to green`, me && !far && `${yd(me, spot)} from you`].filter(Boolean).join('<br>');
+    if (label) L.marker(spot, { icon:L.divIcon({ className:'spot-tag', html:`<span>${label}</span>`, iconSize:[0,0] }), interactive:false, keyboard:false }).addTo(liveLayer);
+  }
+}
+$('#spotClear').onclick = () => { spot = null; drawLive(); };
 
 function renderHole(fly = true){
   const n = hole, info = holeInfo(n), pin = (greens[course.id] || {})[n], gp = info.green?.poly;
   $('#holeNum').textContent = 'Hole ' + n;
-  $('#holeMeta').textContent = [info.par && `Par ${info.par}`, info.yds && `${info.yds} yds`, info.hcp && `Handicap ${info.hcp}`]
+  $('#holeMeta').textContent = [info.par && `Par ${info.par}`, info.yds && `${info.yds} yds` + (course.tee && course.tees?.length > 1 ? ` (${course.tee})` : ''), info.hcp && `Handicap ${info.hcp}`]
     .filter(Boolean).join(' · ') || 'No scorecard for this hole';
   $('#pinGreen').setAttribute('aria-pressed', pinning);
   $('#pinGreen').textContent = pinning ? 'Tap the green…' : pin ? 'Move green pin' : gp ? 'Adjust green' : 'Pin the green';
@@ -907,6 +996,7 @@ function renderHole(fly = true){
     : info.oh ? 'Hole route found but no green outline. Pin the green to set it.'
     : osmData?.greens.length ? `This hole isn't labeled in OpenStreetMap, so the whole course is shown. Tap "Pin the green," then tap hole ${n}'s green.`
     : 'Tap "Pin the green," then tap the green on the map. It\'s saved for every round.';
+  drawLive();
   if (!map) return;
   osmLayer?.remove();
   curLayer?.remove(); curLayer = L.layerGroup().addTo(map);
@@ -917,22 +1007,22 @@ function renderHole(fly = true){
   if (info.oh){ L.polyline(info.oh.line, { color:'#4FB3FF', weight:4, interactive:false }).addTo(curLayer); pts.push(...info.oh.line); }
   if (gp){
     L.polygon(gp, { color:'#4FB3FF', weight:3, fill:false, interactive:false }).addTo(curLayer); pts.push(...gp);
-    ['front','back'].forEach(s => L.circleMarker(info.green[s], { radius:5, color:'#04182C', weight:2, fillColor:'#EAF3FF', fillOpacity:1, interactive:false }).addTo(curLayer));
+    if (!pin) ['front','back'].forEach(s => L.circleMarker(info.green[s], { radius:5, color:'#04182C', weight:2, fillColor:'#EAF3FF', fillOpacity:1, interactive:false }).addTo(curLayer));
   }
   const mid = pin || info.green?.mid;
   if (mid){ L.circleMarker(mid, { radius:8, color:'#EAF3FF', weight:3, fillColor:'#4FB3FF', fillOpacity:1, interactive:false }).addTo(curLayer); pts.push(mid); }
   if (fly && !pinning){
-    if (pts.length > 1) map.flyToBounds(L.latLngBounds(pts), { paddingTopLeft:[30,110], paddingBottomRight:[30,220], maxZoom:18, duration:.6 });
+    if (pts.length > 1) map.flyToBounds(L.latLngBounds(pts), { paddingTopLeft:[30,110], paddingBottomRight:[30, Math.max(220, $('#holeCard').offsetHeight + 20)], maxZoom:18, duration:.6 });
     else if (pts.length) map.flyTo(pts[0], 18, { duration:.6 });
     else fitCourse();
   }
 }
-$('#holePrev').onclick = () => { const c = holeCount(); hole = hole > 1 ? hole-1 : c; pinning = false; renderHole(); };
-$('#holeNext').onclick = () => { const c = holeCount(); hole = hole < c ? hole+1 : 1; pinning = false; renderHole(); };
+$('#holePrev').onclick = () => { const c = holeCount(); hole = hole > 1 ? hole-1 : c; pinning = false; spot = null; renderHole(); };
+$('#holeNext').onclick = () => { const c = holeCount(); hole = hole < c ? hole+1 : 1; pinning = false; spot = null; renderHole(); };
 $('#pinGreen').onclick = () => { pinning = !pinning; renderHole(false); };
 $('#osmRetry').onclick = () => course && loadOSM(course, true);
 $('#osmClose').onclick = () => { $('#osmStatus').hidden = true; statusDismissed = true; };   // hidden for the rest of this round
-$('#mapBack').onclick = () => { $('#mapScreen').hidden = true; $('#osmStatus').hidden = true; $('#home').hidden = false; course = null; $('#courseInput').value = ''; $('#resultsBox').hidden = true; update(); };
+$('#mapBack').onclick = () => { stopGPS(); $('#mapScreen').hidden = true; $('#osmStatus').hidden = true; $('#home').hidden = false; course = null; $('#courseInput').value = ''; $('#resultsBox').hidden = true; update(); };
 $('#startRound').onclick = startRound;
 $('#endRound').onclick = endRound;
 

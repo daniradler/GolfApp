@@ -58,8 +58,19 @@ saying something works.
    75% of screen height. ‹ goes back to course list.
 3. **Round**: one hole at a time. Map shows only the current hole's features
    (route line, its green with front/middle/back dots, nearby tee/fairway/
-   bunkers/water). Hole card at bottom: ‹ Hole N › , par · yards · handicap,
-   **Pin the green**. **End round** (top right) returns to overview.
+   bunkers/water). Hole card at bottom: ‹ Hole N › , par · yards (tee) · handicap,
+   **live GPS yardage** to Front / Middle / Back, **Pin the green**. **End round**
+   (top right) returns to overview.
+   - GPS (`startGPS()` on Start round, `stopGPS()` on End round / back):
+     `watchPosition`, blue dot + accuracy circle on the map. Your own green pin
+     replaces the mapped green and gives a middle number only. Over 1500 yds
+     from the green shows "–" and how many miles away you are.
+   - **Tap the map** (when not pinning) to drop a yellow spot: map label and the
+     yellow box show spot→middle of green and you→spot. × clears it; changing
+     holes or ending the round clears it too. All of this is in `drawLive()`
+     (own `liveLayer`, redrawn on every GPS update).
+   - The total yardage in the top bar and on each tee chip follows the chosen
+     tee; when a tee has no total on file, its hole yardages are added up.
 4. Status message ("9 of 18 holes mapped…") shows at the start of each round,
    × hides it for that round only, returns next round. Errors always show.
 
@@ -67,7 +78,7 @@ saying something works.
 
 | Purpose | Source | Notes |
 |---|---|---|
-| Course search + scorecards | OpenGolfAPI `https://api.opengolfapi.org` | `GET /v1/courses/search?q=` → `courses[]` (id, course_name, city, state, latitude, longitude, par). `GET /api/v1/courses/{id}` → `tees[]` (tee_name, gender, par, yardage) and `holes_data[]` (number, par, handicap_index, yardages{red,blue,…}). Its per-hole coordinates are null for the courses checked, so layouts come from OSM. **CORS from the browser has not been verified yet**; if it fails the app falls back to Nominatim and labels results "Map only". |
+| Course search + scorecards | OpenGolfAPI `https://api.opengolfapi.org` | `GET /v1/courses/search?q=` → `courses[]` (id, course_name, city, state, latitude, longitude, par). `GET /api/v1/courses/{id}` → `tees[]` (tee_name, gender, par, yardage) and `holes_data[]` (number, par, handicap_index, yardages{red,blue,…}). Its per-hole coordinates are null for the courses checked, so layouts come from OSM. Works from the browser (CORS checked Oct 22 2026). Some tees have a total but no per-hole yardages (e.g. Bethpage Black "Regulation"). If it fails the app falls back to Nominatim and labels results "Map only". |
 | Course search + scorecards (2nd source) | GolfCourseAPI via our `/api/gca` pass-through (`netlify/functions/gca.mjs`) | Key in Netlify env var `GOLFCOURSEAPI_KEY` (Bearer auth); never in index.html. Free plan = 35 requests/day, so the pass-through caches searches 3 days and courses 90 days (Blobs store `golfcourseapi`) and the app sends one search per query (plus one retry with the longest word if empty). `GET /v1/search?search_query=` → `courses[]` (id 8-char, club_name, course_name, location{address,city,state,latitude,longitude}); `GET /v1/courses/{id}` → `tees.male[]/female[]` (tee_name, course_rating, slope_rating, total_yards, par_total, holes[]{par,yardage,handicap}). No hole coordinates. Spec: https://api.golfcourseapi.com/docs/api/openapi.yml. `trimGca()` converts to the OpenGolfAPI scorecard shape (women's tees sharing a men's name become "Name (W)"). When both sources have a course (`sameCourse()`: all words match both ways, within 2 km) the GolfCourseAPI copy is shown. Without the key, `/api/gca` returns 503 and search silently uses OpenGolfAPI only. |
 | Search fallback | Nominatim | `format=jsonv2`, prefers `type=golf_course` |
 | Hole layouts | Overpass API (overpass-api.de, maps.mail.ru, overpass.kumi.systems — tried in order, 40 s each) | Two independent lookups (one failing keeps the other). On total failure the status says why (busy/timeout/offline) and retries once after 20 s. First query: features inside the `leisure=golf_course` area around the course center; if < 18 holes, retries with a 1500 m radius and keeps whichever has more holes. Tags used: `golf=hole` (ref, par, handicap, line tee→green), `green`, `tee`, `fairway`, `bunker`, `*water_hazard`, `natural=water`. |
@@ -125,12 +136,10 @@ a real bug once).
 
 ## Not built yet (roadmap, roughly in order)
 
-1. **Live GPS + spoken yardage** — the original point of the app. Distance from
-   the player's position to front/middle/back, spoken with the Web Speech API
+1. **Spoken yardage** — the original point of the app. Live GPS distances are
+   done (see App flow); still to do: speak them with the Web Speech API
    (`speechSynthesis`) on tap; optionally earbud/watch media button via the
    Media Session API. GPS needs HTTPS (fine on Netlify and localhost).
-   An earlier prototype (not in this repo's history) did this; rebuild it on
-   top of the current hole data.
 2. Rotate each hole so the tee is at the bottom and the green at the top.
 3. Shot tracking (mark shot → walk to ball → distance) and per-club averages.
 4. Map-a-hole mode for unmapped holes (tap tee, green front/middle/back, hazards).
