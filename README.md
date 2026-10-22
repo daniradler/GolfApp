@@ -72,11 +72,12 @@ The app runs entirely in the browser, but it loads these public services:
 | Satellite photos | server.arcgisonline.com (Esri) | Satellite background |
 | Street map | tile.openstreetmap.org | The Map view (Map / Satellite button) |
 | Course search and scorecards | api.opengolfapi.org | Search results with par, yardage and tees |
+| Course search and scorecards (second source) | GolfCourseAPI, through the site's own `/api/gca` (needs the `GOLFCOURSEAPI_KEY` setting on Netlify) | More courses, men's and women's tees with rating and slope |
 | Course search fallback | nominatim.openstreetmap.org | "Map only" results if OpenGolfAPI is unavailable |
 | Hole layouts | the site's own `/api/course` service (Netlify), which fetches from OpenStreetMap's Overpass servers and saves each course | Greens, fairways, bunkers and hole routes |
 | Fonts | fonts.googleapis.com | Typefaces (falls back to system fonts) |
 
-No API keys or accounts are needed.
+No API keys are needed to run it. GolfCourseAPI results only appear on the Netlify site once its key is added there (Site configuration → Environment variables → `GOLFCOURSEAPI_KEY`).
 
 ## Course-data service
 

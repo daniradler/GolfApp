@@ -319,6 +319,26 @@ async function ogaSearch(term){
   return (d.courses || []).slice(0, 25).map(c => ({ src:'oga', id:c.id, name:c.course_name || c.name,
     sub:[[c.city, c.state].filter(Boolean).join(', '), c.par && `Par ${c.par}`].filter(Boolean).join(' · '), center:[c.latitude, c.longitude] }));
 }
+/* GolfCourseAPI, through our Netlify pass-through (/api/gca keeps the key private and
+   saves answers). One request per search to stay inside the free plan's 35 a day. */
+const placeOf = L => {
+  if (L?.city || L?.state) return [L.city, L.state].filter(Boolean).join(', ');
+  const p = (L?.address || '').split(',').map(t => t.trim()).filter(Boolean);
+  return p.length >= 3 ? `${p[p.length - 3]}, ${(p[p.length - 2] || '').split(' ')[0]}` : '';
+};
+const gcaName = c => !c.course_name || c.course_name === c.club_name || norm(c.club_name).includes(norm(c.course_name))
+  ? (c.club_name || c.course_name) : !c.club_name ? c.course_name : `${c.club_name} – ${c.course_name}`;
+async function gcaSearch(term){
+  const d = await getJSON(`/api/gca?search=${encodeURIComponent(term)}`, 10000);
+  return (d.courses || []).slice(0, 25).map(c => ({ src:'gca', id:c.id, name:gcaName(c),
+    sub:[placeOf(c.location), 'Scorecard'].filter(Boolean).join(' · '),
+    center: c.location?.latitude != null ? [c.location.latitude, c.location.longitude] : null }));
+}
+/* the same course from both databases: every word matches both ways and they're close together */
+function sameCourse(a, b){
+  if (a.center && b.center && distM(a.center, b.center) > 2000) return false;
+  return matchScore(a.name, b.name) >= 4 && matchScore(b.name, a.name) >= 4;
+}
 async function osmSearch(q){
   const qq = q + (/golf|country club|links/i.test(q) ? '' : ' golf');
   const d = await getJSON('https://nominatim.openstreetmap.org/search?format=jsonv2&limit=10&q=' + encodeURIComponent(qq));
@@ -337,15 +357,24 @@ async function runSearch(q){
     const res = await Promise.allSettled(list.map(ogaSearch));
     res.forEach(r => { if (r.status === 'fulfilled'){ ogaOk = true; pool.push(...r.value); } });
   };
+  const gcaRun = gcaSearch(q).catch(() => []);       // runs alongside OpenGolfAPI
   await runOga(terms);
   /* nothing at all? maybe a typo — try the first letters of each long word */
   if (ogaOk && !pool.length){
     const stems = [...new Set(qt.filter(t => t.length >= 5).map(t => t.slice(0, 4)))].slice(0, 3);
     if (stems.length) await runOga(stems);
   }
+  let gca = await gcaRun;
+  if (!gca.length && qt.length > 1){                   // nothing? one more try with the longest word
+    const w = qt.slice().sort((a, b) => b.length - a.length)[0];
+    if (w && w.length >= 4) gca = await gcaSearch(w).catch(() => []);
+  }
   if (seq !== searchSeq) return;
+  if (gca.length) ogaOk = true;
+  /* prefer GolfCourseAPI's copy of a course both have (men's and women's tees, rating, slope) */
+  pool = [...gca, ...pool.filter(o => !gca.some(g => sameCourse(g, o)))];
   const seen = new Set();
-  let list = rank(q, pool.filter(r => !seen.has(r.id) && seen.add(r.id)));
+  let list = rank(q, pool.filter(r => !seen.has(r.src + r.id) && seen.add(r.src + r.id)));
   const strong = list.length && list[0].score >= 4;      // every word matched
   if (!strong){
     try {
@@ -386,8 +415,40 @@ function openResult(r){
   const k = KNOWN.find(k => k.ogaId === r.id) || (r.src !== 'oga' && findKnown(r.name));
   if (k) return openMap(k);
   if (r.src === 'oga') return openOga(r.id, r.name, r.center);
+  if (r.src === 'gca') return openGca(r.id, r.name, r.center);
   openMap({ id:r.id, name:r.name, place:r.sub.replace(' · Map only', ''), center:r.center, zoom:16, holes:null });
 }
+/* GolfCourseAPI course → the same shape as an OpenGolfAPI scorecard */
+function trimGca(d){
+  const L = d.location || {}, male = d.tees?.male || [], female = d.tees?.female || [];
+  const menNames = new Set(male.map(t => t.tee_name));
+  const tees = [...male.map(t => ({ ...t, gender:'male', name:t.tee_name })),
+                ...female.map(t => ({ ...t, gender:'female', name: menNames.has(t.tee_name) ? `${t.tee_name} (W)` : t.tee_name }))].filter(t => t.name);
+  const base = (male[0] || female[0] || {}).holes || [];
+  const [city, state] = placeOf(L).split(', ');
+  return { id:d.id, course_name:gcaName(d), club_name:d.club_name, city, state, lat:L.latitude, lng:L.longitude,
+    par:(male[0] || female[0])?.par_total,
+    tees: tees.map(t => ({ name:t.name, gender:t.gender, par:t.par_total, yardage:t.total_yards, rating:t.course_rating, slope:t.slope_rating })),
+    holes_data: base.map((h, i) => ({ number:i + 1, par:h.par, hcp:h.handicap,
+      yardages:Object.fromEntries(tees.map(t => [t.name.toLowerCase(), t.holes?.[i]?.yardage ?? null])) })) };
+}
+async function gcaScorecard(id){
+  let t = null; try { t = JSON.parse(localStorage.getItem(DKEY + 'gca-' + id)); } catch {}
+  if (!t){ t = trimGca(await getJSON(`/api/gca?id=${encodeURIComponent(id)}`, 12000)); try { localStorage.setItem(DKEY + 'gca-' + id, JSON.stringify(t)); } catch {} }
+  return t;
+}
+async function openGca(id, name, center){
+  $('#readyCourse').textContent = name; $('#readyTag').textContent = 'Loading the scorecard…'; $('#ready').hidden = false;
+  let t = null; try { t = await gcaScorecard(id); } catch {}
+  if ($('#ready').hidden) return;
+  const c0 = t?.lat != null ? [t.lat, t.lng] : center;
+  if (!c0){ $('#ready').hidden = true; return lookupCourse(name); }      // no location on file: find it on the map
+  $('#ready').hidden = true;
+  const c = { id:'gca-' + id, gcaId:id, name:t?.course_name || name, center:c0, zoom:16, holes:null, place:'Scorecard unavailable right now' };
+  if (t) attachScorecard(c, t);
+  openMap(c);
+}
+
 /* keep only what the app uses, so the saved copy stays small */
 function trimOga(d){
   return { id:d.id, course_name:d.course_name, club_name:d.club_name, city:d.city, state:d.state, lat:d.lat, lng:d.lng, par:d.par,
