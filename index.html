@@ -961,7 +961,7 @@ function drawLive(){
   $('#spotBox').hidden = !spot;
   if (spot){
     $('#spotGreen').textContent = g.mid ? yd(spot, g.mid) : '–';
-    $('#spotMe').textContent = me ? yd(me, spot) : '–';
+    $('#spotMe').textContent = me && !far ? yd(me, spot) : '–';
   }
   if (!map) return;
   liveLayer?.remove(); liveLayer = L.layerGroup().addTo(map);
