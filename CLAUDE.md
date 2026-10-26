@@ -40,12 +40,21 @@ saying something works.
   falls through to direct Overpass.
 - **Deploy:** Netlify is linked to this repo. Every push to `main` goes live in
   about a minute. There is no staging site, so test locally before pushing.
-- **Run locally:** `python3 -m http.server 8000` or `npm start`, then
-  http://localhost:8000. See README.md.
+- **Run locally:** `python3 tools/serve.py` (= `npm start`), then
+  http://localhost:8000. It's `http.server` plus a `PUT /GolfCourseMaps/<id>.json`
+  handler (127.0.0.1 only, .json in that folder only, ≤2 MB) that writes the map
+  and rebuilds `GolfCourseMaps/index.json`. The preview config
+  `.claude/launch.json` ("golf") runs it; that file is excluded from git via
+  `.git/info/exclude`. Plain `http.server` works too, but then maps save only
+  in the browser. See README.md.
 
 ## App flow (current)
 
-1. **Select a course** (start screen): search box + saved courses. Typing 3+
+0. **Start screen** (`#start`): two big buttons, **Play a round** /
+   **Map a course**. Both open the course picker (`#home`, `showPicker()`,
+   `appMode` = 'play' | 'map'); ‹ returns to the start screen. Opening a course
+   goes to the overview (play) or straight into the mapper (map).
+1. **Select a course** (`#home`): search box + saved courses. Typing 3+
    letters searches online (debounced 400 ms). Search is forgiving
    (`matchScore()`): it queries OpenGolfAPI with the full phrase and with each
    important word (stop words like golf/course/club/at/the are ignored), retries
@@ -82,8 +91,54 @@ saying something works.
      +bearing. Don't upgrade to 0.3+ without retesting (released Oct 2026).
    - The total yardage in the top bar and on each tee chip follows the chosen
      tee; when a tee has no total on file, its hole yardages are added up.
-4. Status message ("9 of 18 holes mapped…") shows at the start of each round,
+4. Status message ("9 of 18 holes mapped…", built by `refreshStatus()`; holes
+   from your course map are counted first) shows at the start of each round,
    × hides it for that round only, returns next round. Errors always show.
+5. **Map a course** (mode `'mapping'`, `mapper` state object, `renderMapper()`):
+   one hole at a time, starting at the first hole not yet in your course map.
+   Steps (bar on the card): **Tee → Front → Back → Hazards → Shapes**.
+   - Tee/front/back/hazards use a fixed **crosshair at the map centre**; "Set"
+     saves `map.getCenter()`. A label above it shows yards from the tee / past
+     the front. "I'm on the tee (GPS)" appears when you're within 3 km.
+   - Guide: OpenStreetMap's hole line + green (dashed) when it has one; the map
+     starts on its tee and is turned tee-up. No guide → starts at the previous
+     hole's green.
+   - Hazards: crosshair + **+ Sand / + Water** (as many as you like), Undo, Next.
+   - Shapes (`predictShapes()`): green, tee box, fairway, each hazard. An
+     OpenStreetMap outline at that spot is reused (thinned to ~60 points); else
+     green = ellipse from front/back, tee box = 16×10 m box, fairway = 35-yd strip
+     from 30% of the hole to just short of the green (none under 230 yds), sand =
+     8 m circle, water = 20 m circle. Chips pick the shape; the map zooms to it.
+     `drawEditor()`: draggable white dots (Leaflet draggable markers; work on the
+     turned map), faded midpoint dots add a point when dragged, tap a dot then
+     **Remove point**. "No fairway" / "Remove hazard" / "Reset shape".
+   - Check line: tee→middle of green vs scorecard (green if within 12%).
+   - **Save hole** → `saveCourseMap()` → next unmapped hole; after the last one
+     a "Course mapped!" screen with **Play a round**. Mapped holes open on a
+     review screen (Edit shapes / Start this hole over / Delete hole map).
+   - Finish (top right) → course overview; ‹ → course list (asks first if the
+     hole has unsaved marks).
+
+## Hand-made course maps (`GolfCourseMaps/`)
+
+- One JSON file per course, `id = slug(course name)`; `index.json` lists them
+  (`{courses:[{id,name,center,holes,updated}]}`). Format is in
+  `GolfCourseMaps/README.md`. Points are `[lat, lng]` rounded to 6 decimals.
+- Saving: always to localStorage `caddie-voice-maps` ({id: map}); then a PUT to
+  `GolfCourseMaps/<id>.json`, which only `tools/serve.py` accepts. On the live
+  site / a phone the PUT fails → "saved on this device" and **Send map file**
+  (share sheet or download) so the file can be added to the folder and pushed.
+- Loading (`loadCourseMap()` in `openMap`): `index.json` → match by slug, or
+  within 700 m, or within 2.5 km with a name match (`sameMap()`); the newer of
+  the folder copy and the device copy wins.
+- Using: `holeInfo()` returns your hole first (`oh.mapped`, exact front/middle/
+  back, middle = halfway between your front and back marks). `drawOSM()` draws
+  mapped holes over OpenStreetMap's (and works with no OSM data). In a round a
+  mapped hole hides "Pin the green" (old green pins are ignored for it).
+- sw.js serves `GolfCourseMaps/` network-first (saved copy offline).
+- Sharing between players happens through this folder: maps committed here go
+  out with the app. A live upload service (Netlify Blobs, review page) was
+  discussed but is not built.
 
 ## Data sources (all free, no keys)
 
@@ -131,7 +186,8 @@ the hole line (`greenFor()`).
 OpenGolfAPI scorecard · `caddie-voice-osm2-{id}` Overpass result (30-day
 cache) · `caddie-voice-geo` Nominatim lookups · `caddie-voice-greens` user
 green pins `{courseId:{hole:[lat,lng]}}` · `caddie-voice-tee-{courseId}`
-chosen tee · `caddie-voice-hidden` (legacy, mostly unused).
+chosen tee · `caddie-voice-maps` your course maps (backup of / stand-in for
+GolfCourseMaps files) · `caddie-voice-hidden` (legacy, mostly unused).
 
 Wrap every localStorage access in try/catch (already the pattern).
 
@@ -152,7 +208,8 @@ a real bug once).
    (`speechSynthesis`) on tap; optionally earbud/watch media button via the
    Media Session API. GPS needs HTTPS (fine on Netlify and localhost).
 2. Shot tracking (mark shot → walk to ball → distance) and per-club averages.
-3. Map-a-hole mode for unmapped holes (tap tee, green front/middle/back, hazards).
+3. Mapper extras: a bend point for doglegs, carry distances to hazards in a
+   round, sharing maps between players without going through GitHub.
 4. **Native apps** for background GPS and a tap-to-speak watch button:
    Swift/SwiftUI + watchOS, or Kotlin + Wear OS, depending on his phone.
    Reuse the course search and yardage logic.

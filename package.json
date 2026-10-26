@@ -2,9 +2,9 @@
   "name": "caddie-voice",
   "version": "0.1.0",
   "private": true,
-  "description": "Phone-friendly golf web app: course search, satellite course maps and hole-by-hole view. netlify/functions/course.mjs is the course-data service.",
+  "description": "Phone-friendly golf web app: course search, satellite course maps, hand-made course maps (GolfCourseMaps/) and hole-by-hole yardage. netlify/functions/course.mjs is the course-data service.",
   "scripts": {
-    "start": "npx --yes serve@14.2.4 -l 8000 .",
+    "start": "python3 tools/serve.py 8000",
     "start:lan": "npx --yes serve@14.2.4 -l tcp://0.0.0.0:8000 ."
   },
   "dependencies": {

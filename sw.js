@@ -3,9 +3,10 @@
    - App files, map library, fonts: saved on first use, served from the phone after that.
    - Satellite and OpenStreetMap map tiles: saved as you view them (up to ~1500), so a course you've
      looked at before still shows its photo with poor signal.
+   - Hand-made course maps (GolfCourseMaps/): newest when online, saved copy offline.
    - Course search and map data are NOT handled here; the app already saves those itself.
    Bump VERSION whenever this file changes. */
-const VERSION = 'v3';
+const VERSION = 'v4';
 const SHELL = `cv-shell-${VERSION}`, TILES = 'cv-tiles', MAX_TILES = 1500;
 const SHELL_FILES = ['./', './index.html', './manifest.webmanifest',
   './icons/icon-192.png', './icons/icon-512.png', './icons/apple-touch-icon.png', './icons/favicon-64.png'];
@@ -48,6 +49,16 @@ self.addEventListener('fetch', e => {
       } catch {
         return (await caches.match('./index.html')) || (await caches.match('./')) || Response.error();
       }
+    })());
+    return;
+  }
+
+  // Hand-made course maps (GolfCourseMaps/): newest copy when there's signal, saved copy when not.
+  if (url.origin === self.location.origin && url.pathname.includes('/GolfCourseMaps/')){
+    e.respondWith((async () => {
+      const c = await caches.open(SHELL);
+      try { const res = await fetch(req, { cache:'no-store' }); if (res.ok) c.put(req, res.clone()); return res; }
+      catch { return (await c.match(req)) || Response.error(); }
     })());
     return;
   }

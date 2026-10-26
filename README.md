@@ -2,11 +2,15 @@
 
 A phone-friendly golf web app. Search for a course, see the whole layout on a
 satellite map, pick your tees, then play it one hole at a time with the green's
-front, middle and back marked.
+front, middle and back marked and live GPS yardage. Courses that aren't mapped
+well can be mapped by hand with **Map a course** (tee, front and back of the
+green, sand and water, then fine-tune the outlines).
 
 The app itself is a single file: `index.html`. Alongside it: `manifest.webmanifest`
-(app name/icon), `sw.js` (offline support), `icons/`, and `netlify.toml`. There is
-no build step and nothing to install to run it.
+(app name/icon), `sw.js` (offline support), `icons/`, `netlify.toml`,
+`GolfCourseMaps/` (hand-made course maps, see its README) and `tools/serve.py`
+(local server that can save those maps). There is no build step and nothing to
+install to run it.
 
 ## Install it on a phone
 
@@ -28,18 +32,14 @@ Pick whichever you already have:
 ```sh
 git clone https://github.com/daniradler/GolfApp.git
 cd GolfApp
-python3 -m http.server 8000
+python3 tools/serve.py
 ```
 
-On Windows, use `py -m http.server 8000` if `python3` isn't found.
-
-**Node.js**
-
-```sh
-git clone https://github.com/daniradler/GolfApp.git
-cd GolfApp
-npm start
-```
+On Windows, use `py tools/serve.py` if `python3` isn't found. (`npm start` runs
+the same thing.) This is a normal web server plus one extra: courses you map with
+**Map a course** are saved straight into the `GolfCourseMaps` folder. Plain
+`python3 -m http.server 8000` also works, but then maps are only saved in the
+browser.
 
 Then open **http://localhost:8000** in a browser.
 
