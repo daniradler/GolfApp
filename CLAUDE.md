@@ -97,14 +97,24 @@ saying something works.
 5. **Map a course** (mode `'mapping'`, `mapper` state object, `renderMapper()`):
    one hole at a time, starting at the first hole not yet in your course map.
    Steps (bar on the card): **Tee → Front → Back → Hazards → Shapes**.
-   - Tee/front/back/hazards use a fixed **crosshair at the map centre**; "Set"
-     saves `map.getCenter()`. A label above it shows yards from the tee / past
-     the front. "I'm on the tee (GPS)" appears when you're within 3 km.
+   - Tee/front/back/hazards use a fixed **crosshair**, placed halfway between
+     the top bar and the card (`placeCrosshair()`); `here()` reads the point
+     under it and `flyUnder()` flies a point there (works on the turned map).
+   - **Colored tees** (`TEES[]`: black championship, blue back, white middle,
+     gold/yellow senior, red forward; `colorOf()` maps scorecard tee names via
+     aliases). Tee step: **Tee color** dropdown (with that color's scorecard
+     yards, ✓ when set), **Set/Move <color> tee**, chips of marked tees (× removes),
+     "Next: green ›" once one is set. After Set, the dropdown moves on to the next
+     common one (blue → white → gold → red, then black). Only mark the tees the
+     hole has. `mapper.tees{color:pt}`; `mapper.tee` = back-most marked tee
+     (`backTee()`), which the hole line/turning uses. Label above the crosshair:
+     yards from the nearest other marked tee, then yards from tee / past the front.
+     "I'm on the <color> tee (GPS)" appears when you're within 3 km.
    - Guide: OpenStreetMap's hole line + green (dashed) when it has one; the map
      starts on its tee and is turned tee-up. No guide → starts at the previous
      hole's green.
    - Hazards: crosshair + **+ Sand / + Water** (as many as you like), Undo, Next.
-   - Shapes (`predictShapes()`): green, tee box, fairway, each hazard. An
+   - Shapes (`predictShapes()`): green, a tee box per marked tee color, fairway, each hazard. An
      OpenStreetMap outline at that spot is reused (thinned to ~60 points); else
      green = ellipse from front/back, tee box = 16×10 m box, fairway = 35-yd strip
      from 30% of the hole to just short of the green (none under 230 yds), sand =
@@ -112,7 +122,11 @@ saying something works.
      `drawEditor()`: draggable white dots (Leaflet draggable markers; work on the
      turned map), faded midpoint dots add a point when dragged, tap a dot then
      **Remove point**. "No fairway" / "Remove hazard" / "Reset shape".
-   - Check line: tee→middle of green vs scorecard (green if within 12%).
+   - Check line: each marked tee→middle of green vs that color's scorecard yards
+     (`scColorYards()`; green if within 12%).
+   - In a round (`holeInfo()`), a mapped hole starts from the tee whose color
+     matches the tee picked on the overview, else the nearest marked color,
+     else the back tee; the hint says which ("From your course map (White tee)").
    - **Save hole** → `saveCourseMap()` → next unmapped hole; after the last one
      a "Course mapped!" screen with **Play a round**. Mapped holes open on a
      review screen (Edit shapes / Start this hole over / Delete hole map).

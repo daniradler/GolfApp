@@ -106,6 +106,12 @@ input::placeholder{color:var(--mist);opacity:.7}
 .spot .x{flex:0 0 auto;width:36px;height:36px;border-radius:50%;background:transparent;color:var(--mist);font-size:24px;line-height:1}
 /* Map a course */
 .crosshair{position:absolute;z-index:1050;left:50%;top:50%;width:0;height:0;pointer-events:none}
+/* which tee you're marking */
+.teepick{display:flex;align-items:center;gap:8px}
+.teepick label{font-size:13px;white-space:nowrap}
+.teepick select{flex:1;min-width:0;font:inherit;font-size:16px;font-weight:600;background:var(--field);color:var(--ink);border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+.chips .teechip{display:flex;align-items:center;gap:6px}
+.teechip i{width:12px;height:12px;border-radius:50%;border:1px solid #04182C;display:inline-block}
 .crosshair i{position:absolute;left:-22px;top:-22px;width:44px;height:44px;border:2px solid #fff;border-radius:50%;box-shadow:0 0 0 1px rgba(0,0,0,.6),inset 0 0 0 1px rgba(0,0,0,.6)}
 .crosshair i::before,.crosshair i::after{content:"";position:absolute;background:#fff;box-shadow:0 0 0 1px rgba(0,0,0,.55)}
 .crosshair i::before{left:20px;top:-12px;width:2px;height:64px}
@@ -295,6 +301,8 @@ input::placeholder{color:var(--mist);opacity:.7}
     <ol class="msteps" id="mapSteps" aria-label="Steps"><li>Tee</li><li>Front</li><li>Back</li><li>Hazards</li><li>Shapes</li></ol>
     <p class="mtitle" id="mapTitle"></p>
     <p class="hint" id="mapHint"></p>
+    <div class="teepick" id="teePick" hidden><label for="teeSelect">Tee color</label><select id="teeSelect"></select></div>
+    <div class="chips" id="teeChips" hidden aria-label="Tees marked on this hole"></div>
     <div class="chips" id="shapeChips" hidden></div>
     <div class="mrow" id="mapRow"></div>
     <div class="mrow small" id="mapRow2"></div>
@@ -946,8 +954,12 @@ function holeCount(){ return course.holes?.length || Math.max(18, ...(osmData?.h
 function holeInfo(n){
   const sc = course.holes?.[n-1], mh = courseMap?.holes?.[n];
   if (mh){                                           // your own map of this hole comes first
-    const mid = gmid(mh);
-    return { par: sc?.[0], yds: sc?.[1] ?? yd(mh.tee, mid), hcp: sc?.[2], oh:{ ref:n, line:[mh.tee, mid], mapped:mh },
+    /* start from the tee colour you're playing (picked on the course screen), else the nearest one marked, else the back tee */
+    const mid = gmid(mh), tees = holeTees(mh), want = TEES.findIndex(t => t.c === colorOf(course.tee || ''));
+    const c = want < 0 ? null : TEES.map((t, i) => [t.c, Math.abs(i - want)]).filter(([k]) => tees[k]).sort((a, b) => a[1] - b[1])[0]?.[0];
+    const tee = tees[c] || mh.tee;
+    return { par: sc?.[0], yds: sc?.[1] ?? yd(tee, mid), hcp: sc?.[2], teeColor: tees[c] ? c : null,
+             oh:{ ref:n, line:[tee, mid], mapped:mh },
              green:{ front:mh.front, mid, back:mh.back, poly:mh.green } };
   }
   const oh = osmData?.holes.find(h => h.ref === n);
@@ -998,7 +1010,7 @@ function openMap(k){
   loadOSM(k);
   enrich(k);
   /* your own map of this course, if you've made one; the mapper then starts at the first hole you haven't mapped */
-  loadCourseMap(k).then(() => { if (course === k && mode === 'mapping' && mapper && !mapper.dirty && !mapper.tee) mapperGoto(firstUnmapped()); });
+  loadCourseMap(k).then(() => { if (course === k && mode === 'mapping' && mapper && !mapper.dirty && !Object.keys(mapper.tees || {}).length) mapperGoto(firstUnmapped()); });
 }
 function setMode(m){
   mode = m; const r = m === 'round', mp = m === 'mapping';
@@ -1123,7 +1135,7 @@ function renderHole(fly = true){
     .filter(Boolean).join(' · ') || 'No scorecard for this hole';
   $('#pinGreen').setAttribute('aria-pressed', pinning);
   $('#pinGreen').textContent = pinning ? 'Tap the green…' : pin ? 'Move green pin' : gp ? 'Adjust green' : 'Pin the green';
-  $('#pinHint').textContent = mine ? `From your course map: front, middle and back. To change it, use "Map a course".`
+  $('#pinHint').textContent = mine ? `From your course map${info.teeColor ? ` (${teeOf(info.teeColor).name} tee)` : ''}: front, middle and back. To change it, use "Map a course".`
     : pinning ? `Tap the middle of the green for hole ${n}.`
     : pin ? `Using your green pin for hole ${n}.`
     : info.oh?.est === 'guess' ? `Hole ${n} worked out from the scorecard yardage. If it's the wrong green, tap "Pin the green".`
@@ -1171,6 +1183,22 @@ let folderIdx = null, courseMap = null, appMode = 'play', lastSave = null;
 const slug = t => norm(t).replace(/ /g, '-').slice(0, 80) || 'course';
 const r6 = p => [+(+p[0]).toFixed(6), +(+p[1]).toFixed(6)];
 const gmid = h => [(h.front[0] + h.back[0]) / 2, (h.front[1] + h.back[1]) / 2];      // middle of the green
+/* tee colours, from the back of the hole to the front. Blue, white, gold, red are the usual set; black only on some courses. */
+const TEES = [
+  { c:'black', name:'Black', role:'championship', bg:'#1B1B1B', fg:'#FFFFFF', alias:['black', 'championship', 'tips', 'tournament'] },
+  { c:'blue',  name:'Blue',  role:'back',         bg:'#2F6FE0', fg:'#FFFFFF', alias:['blue', 'back'] },
+  { c:'white', name:'White', role:'middle',       bg:'#FFFFFF', fg:'#04182C', alias:['white', 'middle', 'regulation'] },
+  { c:'gold',  name:'Gold',  role:'senior',       bg:'#E8B923', fg:'#04182C', alias:['gold', 'yellow', 'senior', 'intermediate'] },
+  { c:'red',   name:'Red',   role:'forward',      bg:'#E0413A', fg:'#FFFFFF', alias:['red', 'forward', 'ladies'] }];
+const teeOf = c => TEES.find(t => t.c === c);
+const backTee = tees => TEES.map(t => tees?.[t.c]).find(Boolean) || null;          // the farthest-back tee you marked
+const holeTees = h => h.tees || (h.tee ? { white:h.tee } : {});
+/* which colour a scorecard tee name means: "White", "Gold (W)", "Championship" */
+const colorOf = name => { const w = norm(name).split(' '); return TEES.find(t => t.alias.some(a => w.includes(a)))?.c || null; };
+function scColorYards(n, c){
+  const y = course.hd?.[n-1]?.yardages || {}, k = Object.keys(y).find(k => y[k] && colorOf(k) === c);
+  return k ? y[k] : null;
+}
 async function mapIndex(){
   if (!folderIdx){ try { folderIdx = (await getJSON('GolfCourseMaps/index.json', 6000)).courses || []; } catch { folderIdx = []; } }
   return folderIdx;
@@ -1221,9 +1249,13 @@ async function sendMapFile(){
 }
 function drawMapped(h, layer, n){
   const poly = (p, st) => p?.length > 2 && L.polygon(p, { ...st, interactive:false }).addTo(layer);
-  poly(h.fairway, STYLE.fairways); poly(h.teebox, STYLE.tees);
+  poly(h.fairway, STYLE.fairways);
+  Object.values(h.teeboxes || { x:h.teebox }).forEach(p => poly(p, STYLE.tees));
   (h.hazards || []).forEach(z => poly(z.shape, z.type === 'water' ? STYLE.water : STYLE.bunkers));
   poly(h.green, STYLE.greens);
+  /* a small dot in each tee's colour */
+  Object.entries(holeTees(h)).forEach(([c, pt]) => { const t = teeOf(c);
+    if (t) L.circleMarker(pt, { radius:5, color:'#04182C', weight:2, fillColor:t.bg, fillOpacity:1, interactive:false }).addTo(layer); });
   if (n){ L.polyline([h.tee, gmid(h)], { color:'#EAF3FF', weight:2, opacity:.8, dashArray:'6 6', interactive:false }).addTo(layer); holeTag(n, h.tee).addTo(layer); }
 }
 
@@ -1232,25 +1264,33 @@ const MSTEPS = ['tee', 'front', 'back', 'hazards', 'shape'];
 let mapper = null, mapLayer, editLayer;
 function mapperGoto(n, how){
   const h = how === 'fresh' ? null : courseMap?.holes?.[n];
-  const cp = p => p?.map(r6) || null;
-  mapper = { n, step: h ? 'review' : 'tee', tee:h?.tee || null, front:h?.front || null, back:h?.back || null,
+  const cp = p => p?.map(r6) || null, tees = h ? holeTees(h) : {};
+  const boxes = h ? (h.teeboxes || (h.teebox ? { [Object.keys(tees)[0]]:h.teebox } : {})) : {};
+  mapper = { n, step: h ? 'review' : 'tee', tees:{ ...tees }, front:h?.front || null, back:h?.back || null,
     hazards: (h?.hazards || []).map(z => ({ type:z.type, pt:r6(centroid(z.shape)), shape:cp(z.shape) })),
-    shapes: h ? { green:cp(h.green), teebox:cp(h.teebox), fairway:cp(h.fairway) } : {}, sel:'green', vsel:null,
-    dirty:false, userMoved:false, flash: mapper?.flash || null };
+    shapes: h ? { green:cp(h.green), teeboxes:Object.fromEntries(Object.entries(boxes).map(([c, p]) => [c, cp(p)])), fairway:cp(h.fairway) } : { teeboxes:{} },
+    sel:'green', vsel:null, dirty:false, userMoved:false, flash: mapper?.flash || null };
+  mapper.tee = backTee(mapper.tees); mapper.teeSel = nextTee(mapper.tees);
   renderMapper(true);
 }
+/* the next tee to offer: blue, white, gold, red (black only once those are done) */
+const nextTee = tees => ['blue', 'white', 'gold', 'red', 'black'].find(c => !tees[c]) || 'blue';
 const firstUnmapped = () => { for (let n = 1; n <= holeCount(); n++) if (!courseMap?.holes?.[n]) return n; return 1; };
 const guideHole = n => osmData?.holes.find(h => h.ref === n) || null;
-const here = () => { const c = map.getCenter(); return r6([c.lat, c.lng]); };
+const here = () => { const c = map.containerPointToLatLng([map.getSize().x / 2, xhairY()]); return r6([c.lat, c.lng]); };   // under the crosshair
 function scYards(n){ return course.holes?.[n-1]?.[1] || null; }
 /* tee → middle of the green against the scorecard: a big gap usually means the wrong green */
 function checkHtml(m){
   if (!m.tee || !m.front || !m.back) return '';
-  const y = yd(m.tee, gmid(m)), sc = scYards(m.n);
-  if (!sc) return `Tee to middle of green: ${y} yds.`;
-  const ok = Math.abs(y - sc) / sc < 0.12;
-  return `Tee to middle of green: <span class="check ${ok ? 'ok' : 'off'}">${y} yds</span> · scorecard ${sc}${ok ? ' ✓'
-    : '. That\'s quite different: doglegs play longer than a straight line, otherwise check the tee and green.'}`;
+  const mid = gmid(m); let off = false;
+  /* every tee you marked, against that colour's scorecard yardage when there is one */
+  const parts = TEES.filter(t => m.tees[t.c]).map(t => {
+    const y = yd(m.tees[t.c], mid), sc = scColorYards(m.n, t.c), ok = sc && Math.abs(y - sc) / sc < 0.12;
+    if (sc && !ok) off = true;
+    return `${t.name} <span class="check ${sc ? (ok ? 'ok' : 'off') : ''}">${y}</span>${sc ? ` (card ${sc}${ok ? ' ✓' : ''})` : ''}`;
+  });
+  return 'Tee to middle of green: ' + parts.join(' · ')
+    + (off ? '<br>Far off the card usually means the wrong tee or green (doglegs play a bit longer).' : '');
 }
 
 /* ----- predicted outlines (metres around a point; all shapes stay editable) ----- */
@@ -1277,8 +1317,13 @@ function predictShapes(m){
   const S = m.shapes, mid = gmid(m), len = distM(m.tee, mid), dir = unit(m.tee, mid), side = [-dir[1], dir[0]];
   const depth = distM(m.front, m.back), gdir = depth > 2 ? unit(m.front, m.back) : dir;
   S.green ||= osmShapeAt(osmData?.greens, mid, 15) || ellipseAt(mid, gdir, Math.max(depth / 2, 6), Math.max(depth * .42, 6), 14);
-  S.teebox ||= osmShapeAt(osmData?.tees, m.tee, 12)
-    || [[-8, -5], [8, -5], [8, 5], [-8, 5]].map(([a, b]) => toLL([dir[0] * a + side[0] * b, dir[1] * a + side[1] * b], m.tee));
+  S.teeboxes ||= {};
+  for (const [c, pt] of Object.entries(m.tees)){        // one tee box per colour you marked
+    const d = unit(pt, mid), sd = [-d[1], d[0]];
+    S.teeboxes[c] ||= osmShapeAt(osmData?.tees, pt, 6)
+      || [[-7, -4], [7, -4], [7, 4], [-7, 4]].map(([a, b]) => toLL([d[0] * a + sd[0] * b, d[1] * a + sd[1] * b], pt));
+  }
+  Object.keys(S.teeboxes).forEach(c => { if (!m.tees[c]) delete S.teeboxes[c]; });
   if (S.fairway === undefined || S.fairway === null && m.refit){
     const s0 = Math.max(70, len * .3), s1 = len - Math.max(depth / 2, 6) - 12;
     const at = s => [dir[0] * s, dir[1] * s];           // s metres from the tee toward the green
@@ -1298,12 +1343,13 @@ function predictShapes(m){
 }
 /* the shapes you can pick to edit, in order */
 function shapeList(m){
-  const L0 = [['green', 'Green'], ['teebox', 'Tee box']];
+  const L0 = [['green', 'Green'], ...TEES.filter(t => m.tees[t.c]).map(t => ['t:' + t.c, `${t.name} tee`])];
   if (m.shapes.fairway) L0.push(['fairway', 'Fairway']);
   let s = 0, w = 0; m.hazards.forEach((z, i) => L0.push(['h' + i, z.type === 'water' ? `Water ${++w}` : `Sand ${++s}`]));
   return L0;
 }
-const selShape = m => m.sel[0] === 'h' ? m.hazards[+m.sel.slice(1)]?.shape : m.shapes[m.sel];
+const selShape = m => m.sel[0] === 'h' ? m.hazards[+m.sel.slice(1)]?.shape
+  : m.sel.startsWith('t:') ? m.shapes.teeboxes?.[m.sel.slice(2)] : m.shapes[m.sel];
 
 function renderMapper(fly){
   const m = mapper; if (!m || !course) return;
@@ -1316,10 +1362,10 @@ function renderMapper(fly){
   $('#crosshair').hidden = !aim;
   const prevH = courseMap?.holes?.[n-1];
   const T = {
-    tee: ['Put the crosshair on the tee box',
-      (g ? `The dashed line is where OpenStreetMap ${g.est === 'guess' ? 'guesses' : 'shows'} hole ${n}. `
-        : prevH || guideHole(n - 1) ? `No map guide for this hole. You're at hole ${n-1}'s green; this tee is usually close by. ` : '')
-      + 'Slide the map until the crosshair is on the tee you play from.'],
+    tee: ['Mark the tee boxes',
+      (g ? `Dashed line: where OpenStreetMap ${g.est === 'guess' ? 'guesses' : 'shows'} hole ${n}. `
+        : prevH || guideHole(n - 1) ? `No map guide; you're at hole ${n-1}'s green and this tee is usually close by. ` : '')
+      + 'Pick a color, put the crosshair on that tee and tap Set. Mark only the tees this hole has.'],
     front: ['Now the front of the green', 'Slide the map so the crosshair is on the edge of the green nearest the tee.' + (sc?.[1] ? ` Scorecard: ${sc[1]} yds to the middle.` : '')],
     back: ['Now the back of the green', 'Put the crosshair on the far edge of the green.'],
     hazards: ['Any sand or water on this hole?', m.hazards.length
@@ -1334,9 +1380,23 @@ function renderMapper(fly){
   $('#mapHint').innerHTML = (m.flash ? `<b class="check ok">${m.flash}</b> ` : '') + esc(T[1]) + (extra ? (T[1] ? '<br>' : '') + extra : '');
   m.flash = null;
   renderMapperButtons();
+  placeCrosshair();
   drawMapper();
   if (fly) flyMapper();
   updateReadout();
+}
+/* the crosshair sits halfway between the top bar and the card, wherever that is on this screen */
+function placeCrosshair(){
+  if ($('#crosshair').hidden) return;
+  const top = $('.topbar').getBoundingClientRect().bottom, bot = $('#mapCard').getBoundingClientRect().top;
+  $('#crosshair').style.top = Math.round((top + bot) / 2) + 'px';
+}
+const xhairY = () => parseFloat($('#crosshair').style.top) || map.getSize().y / 2;
+/* fly so that `pt` ends up under the crosshair (which isn't at the map's centre) */
+function flyUnder(pt, z){
+  const dy = xhairY() - map.getSize().y / 2, th = (map.getBearing?.() || 0) * RAD;
+  const w = map.project(pt, z), off = L.point(dy * Math.sin(th), dy * Math.cos(th));   // screen offset turned back into map pixels
+  map.flyTo(map.unproject(w.subtract(off), z), z, { duration:.6 });
 }
 const esc = t => String(t).replace(/[&<>"]/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c]));
 function btn(row, label, fn, cls = '', disabled = false){
@@ -1345,18 +1405,35 @@ function btn(row, label, fn, cls = '', disabled = false){
 }
 function renderMapperButtons(){
   const m = mapper; $('#mapRow').innerHTML = ''; $('#mapRow2').innerHTML = ''; $('#shapeChips').hidden = m.step !== 'shape';
+  $('#teePick').hidden = $('#teeChips').hidden = m.step !== 'tee';
   const go = step => { m.step = step; renderMapper(true); };
-  const set = (key, next) => () => { m[key] = here(); m.dirty = true;
-    if (key === 'tee'){ m.shapes.teebox = null; m.refit = true; }
-    else { m.shapes.green = null; m.refit = true; }
-    go(next); };
+  const set = (key, next) => () => { m[key] = here(); m.dirty = true; m.shapes.green = null; m.refit = true; go(next); };
   const onCourse = me && distM(me, course.center) < 3000;
+  /* put the chosen colour's tee at `pt`; the back-most tee marked is the one the hole line starts from */
+  const setTee = pt => { const c = m.teeSel, had = !!m.tees[c], back = m.tee;
+    m.tees[c] = pt; m.shapes.teeboxes[c] = null; m.tee = backTee(m.tees); m.dirty = true;
+    if (m.tee !== back) m.refit = true;
+    m.teeSel = had ? c : nextTee(m.tees);
+    m.flash = `${teeOf(c).name} tee ${had ? 'moved' : 'set'} ✓`; renderMapper(false); };
   switch (m.step){
-    case 'tee':
-      btn('#mapRow', 'Set tee', set('tee', 'front'), 'go');
-      if (onCourse) btn('#mapRow2', "I'm on the tee (GPS)", () => { m.tee = r6(me); m.dirty = true; m.shapes.teebox = null; m.refit = true; go('front'); });
+    case 'tee': {
+      const sel = $('#teeSelect'), t = teeOf(m.teeSel);
+      sel.innerHTML = TEES.map(x => { const y = scColorYards(m.n, x.c);
+        return `<option value="${x.c}">${x.name} (${x.role})${y ? ` · ${y} yds` : ''}${m.tees[x.c] ? ' ✓' : ''}</option>`; }).join('');
+      sel.value = m.teeSel;
+      sel.onchange = () => { m.teeSel = sel.value; renderMapperButtons(); updateReadout(); if (m.tees[m.teeSel]) flyMapper(); };
+      const chips = $('#teeChips'); chips.innerHTML = '';
+      TEES.filter(x => m.tees[x.c]).forEach(x => { const b = document.createElement('button'); b.className = 'teechip';
+        b.innerHTML = `<i style="background:${x.bg}"></i>${esc(x.name)} ×`; b.setAttribute('aria-label', `Remove ${x.name} tee`);
+        b.onclick = () => { delete m.tees[x.c]; delete m.shapes.teeboxes[x.c]; const back = m.tee; m.tee = backTee(m.tees);
+          if (m.tee !== back) m.refit = true; m.teeSel = x.c; m.dirty = true; renderMapper(false); };
+        chips.appendChild(b); });
+      chips.hidden = !chips.children.length;
+      btn('#mapRow', `${m.tees[t.c] ? 'Move' : 'Set'} ${t.name} tee`, () => setTee(here()), m.tee ? '' : 'go');
+      if (m.tee) btn('#mapRow', 'Next: green ›', () => go('front'), 'go');
+      if (onCourse) btn('#mapRow2', `I'm on the ${t.name} tee (GPS)`, () => setTee(r6(me)));
       btn('#mapRow2', 'Skip this hole', () => mapperStep(1));
-      break;
+      break; }
     case 'front': btn('#mapRow', '‹ Back', () => go('tee')); btn('#mapRow', 'Set front', set('front', 'back'), 'go'); break;
     case 'back':  btn('#mapRow', '‹ Back', () => go('front')); btn('#mapRow', 'Set back', set('back', 'hazards'), 'go'); break;
     case 'hazards':
@@ -1377,7 +1454,9 @@ function renderMapperButtons(){
       if (m.sel === 'fairway' || m.sel[0] === 'h') btn('#mapRow2', m.sel === 'fairway' ? 'No fairway' : 'Remove hazard', () => {
         if (m.sel === 'fairway') m.shapes.fairway = null; else m.hazards.splice(+m.sel.slice(1), 1);
         m.sel = 'green'; m.vsel = null; m.dirty = true; renderMapper(false); });
-      btn('#mapRow2', 'Reset shape', () => { if (m.sel[0] === 'h') m.hazards[+m.sel.slice(1)].shape = null; else { m.shapes[m.sel] = null; if (m.sel === 'fairway') m.refit = true; }
+      btn('#mapRow2', 'Reset shape', () => { if (m.sel[0] === 'h') m.hazards[+m.sel.slice(1)].shape = null;
+        else if (m.sel.startsWith('t:')) m.shapes.teeboxes[m.sel.slice(2)] = null;
+        else { m.shapes[m.sel] = null; if (m.sel === 'fairway') m.refit = true; }
         predictShapes(m); m.vsel = null; m.dirty = true; renderMapper(false); });
       break; }
     case 'review':
@@ -1404,7 +1483,9 @@ async function saveHole(){
   const m = mapper;
   courseMap ||= { version:1, id:slug(course.name), name:course.name, center:r6(course.center),
     ids:{ app:course.id, oga:course.ogaId || null, gca:course.gcaId || null }, holes:{} };
-  courseMap.holes[m.n] = { tee:m.tee, front:m.front, back:m.back, green:m.shapes.green, teebox:m.shapes.teebox, fairway:m.shapes.fairway || null,
+  const tb = Object.fromEntries(Object.entries(m.shapes.teeboxes || {}).filter(([c, p]) => m.tees[c] && p));
+  courseMap.holes[m.n] = { tees:{ ...m.tees }, tee:m.tee, front:m.front, back:m.back, green:m.shapes.green,
+    teeboxes:tb, fairway:m.shapes.fairway || null,
     hazards:m.hazards.filter(z => z.shape).map(z => ({ type:z.type, shape:z.shape })), updated:new Date().toISOString() };
   lastSave = await saveCourseMap();
   if (!lastSave){ alert("Couldn't save: this device's storage is full or blocked."); return; }
@@ -1421,7 +1502,7 @@ function finishMapping(){
   mapper = null; appMode = 'play'; stopGPS(); setMode('overview'); refreshStatus(); return true;
 }
 function startMapping(){
-  mapper = { n:1, step:'tee', hazards:[], shapes:{}, dirty:false };      // placeholder until the course map loads
+  mapper = { n:1, step:'tee', tees:{}, teeSel:'blue', hazards:[], shapes:{ teeboxes:{} }, dirty:false };      // placeholder until the course map loads
   startGPS(); setMode('mapping');
 }
 
@@ -1429,8 +1510,8 @@ function startMapping(){
 function drawMapper(){
   const m = mapper; if (!map) return;
   mapLayer?.remove(); mapLayer = L.layerGroup().addTo(map); editLayer?.remove(); editLayer = null;
-  const tag = (pt, txt, bg) => L.marker(pt, { icon:L.divIcon({ className:'mark-tag', html:txt, iconSize:[22,22] }), interactive:false, keyboard:false })
-    .addTo(mapLayer).getElement().style.background = bg;
+  const tag = (pt, txt, bg) => { const el = L.marker(pt, { icon:L.divIcon({ className:'mark-tag', html:txt, iconSize:[22,22] }), interactive:false, keyboard:false })
+    .addTo(mapLayer).getElement(); el.style.background = bg; return el; };
   const g = guideHole(m.n);
   if (g && !['shape', 'review'].includes(m.step)){
     L.polyline(g.line, { color:'#EAF3FF', weight:2, opacity:.85, dashArray:'6 8', interactive:false }).addTo(mapLayer);
@@ -1438,13 +1519,15 @@ function drawMapper(){
     holeTag(m.n, g.line[0]).addTo(mapLayer);
   }
   if (['shape', 'review'].includes(m.step)){
-    const h = { tee:m.tee, front:m.front, back:m.back, green:m.shapes.green, teebox:m.shapes.teebox, fairway:m.shapes.fairway,
+    const h = { tees:m.tees, tee:m.tee, front:m.front, back:m.back, green:m.shapes.green, teeboxes:m.shapes.teeboxes, fairway:m.shapes.fairway,
       hazards:m.hazards.map(z => ({ type:z.type, shape:z.shape })) };
     drawMapped(h, mapLayer);
     L.polyline([m.tee, gmid(m)], { color:'#4FB3FF', weight:3, interactive:false }).addTo(mapLayer);
     if (m.step === 'shape') drawEditor();
   }
-  if (m.tee) tag(m.tee, 'T', '#EAF3FF');
+  /* each tee as a little tag in its own colour (the one you're marking gets a ring) */
+  if (m.step !== 'shape') TEES.filter(t => m.tees[t.c]).forEach(t => { const el = tag(m.tees[t.c], t.name[0], t.bg); el.style.color = t.fg;
+    if (m.step === 'tee' && t.c === m.teeSel) el.style.boxShadow = '0 0 0 3px #FFD166'; });
   if (m.step !== 'shape'){ if (m.front) tag(m.front, 'F', '#8BE39F'); if (m.back) tag(m.back, 'B', '#8BE39F'); }
   if (m.step !== 'shape' && m.step !== 'review') m.hazards.forEach(z => tag(z.pt, z.type === 'water' ? 'W' : 'S', z.type === 'water' ? '#4FB3FF' : '#F2DFA7'));
 }
@@ -1474,8 +1557,9 @@ function flyMapper(){
   const prevGreen = prevH ? gmid(prevH) : pg ? greenFor(pg).mid : null;    // the next tee is usually near the last green
   const cardH = $('#mapCard').offsetHeight || 300, pad = { l:30, r:30, t:90, b:cardH + 30 };
   const turn = (a, b) => setBearing(a && b && distM(a, b) > 20 ? bearingUp(a, b) : 0);
-  const fly = (pt, z) => pt && map.flyTo(pt, z, { duration:.6 });
-  if (m.step === 'tee'){ turn(g?.line[0], gg?.mid); fly(m.tee || g?.line[0] || prevGreen || course.center, g || prevGreen ? 18 : 16); }
+  const fly = (pt, z) => pt && flyUnder(pt, z);          // lands the point under the crosshair
+  if (m.step === 'tee'){ turn(m.tee || g?.line[0], gg?.mid || (m.front && gmid(m)));
+    fly(m.tees[m.teeSel] || m.tee || g?.line[0] || prevGreen || course.center, g || prevGreen || m.tee ? 18 : 16); }
   else if (m.step === 'front'){ const t = m.front || gg?.front || g?.line[g.line.length-1]; turn(m.tee, t || gg?.mid); if (t) fly(t, 19); else map.setZoom(17); }
   else if (m.step === 'back'){ turn(m.tee, m.front); fly(m.back || gg?.back || m.front, 19); }
   else if (m.step === 'hazards'){ turn(m.tee, gmid(m)); flyToTurned([m.tee, m.front, m.back], pad, 18); }
@@ -1488,7 +1572,9 @@ function flyMapper(){
 function updateReadout(){
   const el = $('#xhairRead'), m = mapper; if (!el || !m || mode !== 'mapping' || !map) return;
   const p = here(); let t = '';
-  if (m.step === 'front' && m.tee) t = `${yd(m.tee, p)} yds from tee`;
+  if (m.step === 'tee'){ const o = TEES.filter(x => x.c !== m.teeSel && m.tees[x.c]).map(x => [x, yd(m.tees[x.c], p)]).sort((a, b) => a[1] - b[1])[0];
+    if (o) t = `${o[1]} yds from ${o[0].name}`; }
+  else if (m.step === 'front' && m.tee) t = `${yd(m.tee, p)} yds from tee`;
   else if (m.step === 'back' && m.front) t = `${yd(m.front, p)} yds past the front`;
   else if (m.step === 'hazards' && m.tee && m.front) t = `${yd(m.tee, p)} from tee · ${yd(p, gmid(m))} to green`;
   el.textContent = t; el.hidden = !t;

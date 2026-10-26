@@ -20,11 +20,18 @@ Every file in this folder is published with the app, so once a map is here
 name, center, ids (database ids the course was found under), updated
 holes: {
   "1": {
-    tee, front, back        points you set with the crosshair
-    green, teebox, fairway  outlines (lists of points); fairway is null on par 3s
+    tees: { blue: [..], white: [..], ... }   each tee color you marked (black, blue,
+                                             white, gold, red; only the ones the hole has)
+    tee                     the back-most marked tee (the hole line starts here)
+    front, back             points you set with the crosshair
+    teeboxes: { blue: [...], ... }   tee box outline per color
+    green, fairway          outlines (lists of points); fairway is null on par 3s
     hazards: [ { type: "sand" | "water", shape: [...] } ]
   }
 }
 ```
+
+Older maps have a single `tee` + `teebox` and no `tees`; the app reads that
+as a White tee.
 
 A full 18-hole course is about 20–60 KB.
