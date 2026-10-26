@@ -5,11 +5,12 @@
      looked at before still shows its photo with poor signal.
    - Course search and map data are NOT handled here; the app already saves those itself.
    Bump VERSION whenever this file changes. */
-const VERSION = 'v2';
+const VERSION = 'v3';
 const SHELL = `cv-shell-${VERSION}`, TILES = 'cv-tiles', MAX_TILES = 1500;
 const SHELL_FILES = ['./', './index.html', './manifest.webmanifest',
   './icons/icon-192.png', './icons/icon-512.png', './icons/apple-touch-icon.png', './icons/favicon-64.png'];
-const LIBS = ['https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js'];
+const LIBS = ['https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js',
+  'https://cdn.jsdelivr.net/npm/leaflet-rotate@0.2.8/dist/leaflet-rotate-src.js'];
 
 self.addEventListener('install', e => {
   e.waitUntil((async () => {
@@ -64,7 +65,7 @@ self.addEventListener('fetch', e => {
 
   // App files, map library and fonts: saved copy first, refreshed in the background.
   const sameOrigin = url.origin === self.location.origin;
-  if (sameOrigin || url.hostname === 'cdnjs.cloudflare.com' || url.hostname.endsWith('fonts.googleapis.com') || url.hostname.endsWith('fonts.gstatic.com')){
+  if (sameOrigin || url.hostname === 'cdnjs.cloudflare.com' || url.hostname === 'cdn.jsdelivr.net' || url.hostname.endsWith('fonts.googleapis.com') || url.hostname.endsWith('fonts.gstatic.com')){
     e.respondWith((async () => {
       const c = await caches.open(SHELL), hit = await c.match(req);
       const fresh = fetch(req).then(res => { if (res.ok || res.type === 'opaque') c.put(req, res.clone()); return res; }).catch(() => null);

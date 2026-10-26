@@ -66,9 +66,20 @@ saying something works.
      replaces the mapped green and gives a middle number only. Over 1500 yds
      from the green shows "–" and how many miles away you are.
    - **Tap the map** (when not pinning) to drop a yellow spot: map label and the
-     yellow box show spot→middle of green and you→spot. × clears it; changing
-     holes or ending the round clears it too. All of this is in `drawLive()`
-     (own `liveLayer`, redrawn on every GPS update).
+     yellow box show spot→middle of green and you→spot (`howFar()`: yards up to
+     1500, miles beyond, so it always shows). × clears it; changing holes or
+     ending the round clears it too. While a spot shows, `#pinHint` is hidden to
+     keep the card short. All of this is in `drawLive()` (own `liveLayer`,
+     redrawn on every GPS update).
+   - **Each hole is turned tee-at-bottom, green-at-top** (`renderHole` →
+     `setBearing(bearingUp(tee, green))`, then `flyToTurned()`, a rotation-aware
+     flyToBounds that keeps the tee above the hole card and the green below the
+     top bar / status message). Tee = first point of the hole line; with no
+     line, your GPS position if within 1400 m of the green; else north-up.
+     Overview is always north-up. Rotation comes from the **leaflet-rotate
+     0.2.8** plugin (jsdelivr; map options `rotate:true`, rotate control and
+     finger/shift-key turning off). Its bearing turns screen = world rotated by
+     +bearing. Don't upgrade to 0.3+ without retesting (released Oct 2026).
    - The total yardage in the top bar and on each tee chip follows the chosen
      tee; when a tee has no total on file, its hole yardages are added up.
 4. Status message ("9 of 18 holes mapped…") shows at the start of each round,
@@ -140,10 +151,9 @@ a real bug once).
    done (see App flow); still to do: speak them with the Web Speech API
    (`speechSynthesis`) on tap; optionally earbud/watch media button via the
    Media Session API. GPS needs HTTPS (fine on Netlify and localhost).
-2. Rotate each hole so the tee is at the bottom and the green at the top.
-3. Shot tracking (mark shot → walk to ball → distance) and per-club averages.
-4. Map-a-hole mode for unmapped holes (tap tee, green front/middle/back, hazards).
-5. **Native apps** for background GPS and a tap-to-speak watch button:
+2. Shot tracking (mark shot → walk to ball → distance) and per-club averages.
+3. Map-a-hole mode for unmapped holes (tap tee, green front/middle/back, hazards).
+4. **Native apps** for background GPS and a tap-to-speak watch button:
    Swift/SwiftUI + watchOS, or Kotlin + Wear OS, depending on his phone.
    Reuse the course search and yardage logic.
 

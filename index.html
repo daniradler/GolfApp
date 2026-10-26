@@ -233,6 +233,8 @@ input::placeholder{color:var(--mist);opacity:.7}
 
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+<!-- lets the map turn so each hole plays bottom-to-top -->
+<script src="https://cdn.jsdelivr.net/npm/leaflet-rotate@0.2.8/dist/leaflet-rotate-src.js"></script>
 <script>
 const $ = s => document.querySelector(s);
 const KEY = 'caddie-voice-courses';
@@ -881,7 +883,9 @@ function openMap(k){
   $('#mapScreen').hidden = false;
   if (window.L){
     if (!map){
-      map = L.map('map', { zoomControl:false, attributionControl:true, fadeAnimation:false }).setView(k.center, k.zoom);
+      /* rotate: the app turns the map itself (tee at the bottom); no compass button, no finger/keyboard turning */
+      map = L.map('map', { zoomControl:false, attributionControl:true, fadeAnimation:false,
+        rotate:!!L.Map.prototype.setBearing, rotateControl:false, touchRotate:false, shiftKeyRotate:false, compassBearing:false }).setView(k.center, k.zoom);
       baseLayers = {
         sat: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
           { maxZoom:20, maxNativeZoom:19, attribution:'Imagery © Esri, Maxar · Course data © OpenStreetMap contributors' }),
@@ -913,7 +917,31 @@ function render(){
   if (!map || !course) return;
   curLayer?.remove(); curLayer = null;
   if (osmLayer && !map.hasLayer(osmLayer)) osmLayer.addTo(map);
+  setBearing(0);                                   // course overview stays north-up
   fitCourse();
+}
+/* ---------- turn the map so a hole plays from the bottom of the screen to the top ---------- */
+function setBearing(deg){ if (map?.setBearing) map.setBearing(deg); }
+/* bearing (degrees) that puts `to` straight above `from` on screen */
+function bearingUp(from, to){
+  const z = map.getZoom(), a = map.project(from, z), b = map.project(to, z);
+  return (-90 - Math.atan2(b.y - a.y, b.x - a.x) * 180 / Math.PI + 720) % 360;
+}
+/* like flyToBounds, but works on a turned map and keeps clear of the hole card */
+function flyToTurned(pts, pad, maxZoom){
+  const z = map.getZoom(), th = (map.getBearing?.() || 0) * Math.PI / 180;   // screen = world turned by the bearing
+  const c = Math.cos(th), s = Math.sin(th);
+  const toScreen = p => [p.x*c - p.y*s, p.x*s + p.y*c], toWorld = q => L.point(q[0]*c + q[1]*s, -q[0]*s + q[1]*c);
+  const q = pts.map(p => toScreen(map.project(p, z)));
+  const xs = q.map(v => v[0]), ys = q.map(v => v[1]);
+  const w = Math.max(...xs) - Math.min(...xs) || 1, h = Math.max(...ys) - Math.min(...ys) || 1, size = map.getSize();
+  const scale = Math.min((size.x - pad.l - pad.r) / w, (size.y - pad.t - pad.b) / h);
+  const zoom = Math.min(maxZoom, map.getScaleZoom(scale, z));
+  const k = map.getZoomScale(zoom, z);              // pixels at the new zoom per pixel now
+  /* centre of the points on screen, shifted so the padding comes out right */
+  const mx = (Math.max(...xs) + Math.min(...xs)) / 2 + (pad.r - pad.l) / 2 / k;
+  const my = (Math.max(...ys) + Math.min(...ys)) / 2 + (pad.b - pad.t) / 2 / k;
+  map.flyTo(map.unproject(toWorld([mx, my]), z), zoom, { duration:.6 });
 }
 function fitCourse(){
   const pts = !osmData ? [] : osmData.boundary.length ? osmData.boundary.flat()
@@ -940,6 +968,8 @@ function stopGPS(){
   gpsWatch = null; me = null; spot = null; liveLayer?.remove(); liveLayer = null;
 }
 const yd = (a, b) => Math.round(distM(a, b) * M2YD);
+/* yards up close; miles when you're nowhere near (e.g. checking a course from home) */
+const howFar = (a, b) => { const y = yd(a, b); return y <= 1500 ? String(y) : `${(y / 1760).toFixed(y < 17600 ? 1 : 0)} mi`; };
 /* the green points for the current hole: your own pin is the middle; front/back only from a mapped green */
 function greenTargets(){
   const info = holeInfo(hole), pin = (greens[course.id] || {})[hole];
@@ -959,9 +989,10 @@ function drawLive(){
     : far ? `You're ${(distM(me, g.mid) / 1609.34).toFixed(1)} miles from this green. Yards show when you're on the course.`
     : `Yards from where you're standing${meAcc > 15 ? ` · GPS within ${Math.round(meAcc * M2YD)} yds` : ''}. Tap the map to measure to a spot.`;
   $('#spotBox').hidden = !spot;
+  $('#pinHint').hidden = !!spot && !pinning;          // keeps the card short so it covers less of the hole
   if (spot){
     $('#spotGreen').textContent = g.mid ? yd(spot, g.mid) : '–';
-    $('#spotMe').textContent = me && !far ? yd(me, spot) : '–';
+    $('#spotMe').textContent = me ? howFar(me, spot) : '–';
   }
   if (!map) return;
   liveLayer?.remove(); liveLayer = L.layerGroup().addTo(map);
@@ -974,7 +1005,7 @@ function drawLive(){
     if (me && !far) L.polyline([me, spot], line).addTo(liveLayer);
     if (g.mid) L.polyline([spot, g.mid], line).addTo(liveLayer);
     L.circleMarker(spot, { radius:9, color:'#04182C', weight:3, fillColor:'#FFD166', fillOpacity:1, interactive:false }).addTo(liveLayer);
-    const label = [g.mid && `${yd(spot, g.mid)} to green`, me && !far && `${yd(me, spot)} from you`].filter(Boolean).join('<br>');
+    const label = [g.mid && `${yd(spot, g.mid)} to green`, me && `${howFar(me, spot)} from you`].filter(Boolean).join('<br>');
     if (label) L.marker(spot, { icon:L.divIcon({ className:'spot-tag', html:`<span>${label}</span>`, iconSize:[0,0] }), interactive:false, keyboard:false }).addTo(liveLayer);
   }
 }
@@ -1012,7 +1043,13 @@ function renderHole(fly = true){
   const mid = pin || info.green?.mid;
   if (mid){ L.circleMarker(mid, { radius:8, color:'#EAF3FF', weight:3, fillColor:'#4FB3FF', fillOpacity:1, interactive:false }).addTo(curLayer); pts.push(mid); }
   if (fly && !pinning){
-    if (pts.length > 1) map.flyToBounds(L.latLngBounds(pts), { paddingTopLeft:[30,110], paddingBottomRight:[30, Math.max(220, $('#holeCard').offsetHeight + 20)], maxZoom:18, duration:.6 });
+    /* tee at the bottom, green at the top; with no mapped tee, turn from where you're standing */
+    const tee = info.oh?.line[0] || (me && mid && distM(me, mid) < 1400 ? me : null);
+    setBearing(tee && mid ? bearingUp(tee, mid) : 0);
+    if (tee && tee === me) pts.push(me);            // keep you on screen too
+    /* keep the green clear of the top bar and the status message, and the tee clear of the hole card */
+    const top = Math.max(110, ...['.topbar', '#osmStatus'].map(s => $(s).hidden ? 0 : $(s).getBoundingClientRect().bottom + 24));
+    if (pts.length > 1) flyToTurned(pts, { l:30, r:30, t:top, b:Math.max(220, $('#holeCard').offsetHeight + 36) }, 18);
     else if (pts.length) map.flyTo(pts[0], 18, { duration:.6 });
     else fitCourse();
   }
