@@ -26,6 +26,7 @@ holes: {
     front, back             points you set with the crosshair
     teeboxes: { blue: [...], ... }   tee box outline per color
     green, fairway          outlines (lists of points); fairway is null on par 3s
+    bend                    dogleg point fitted to the fairway (null = straight)
     hazards: [ { type: "sand" | "water", shape: [...] } ]
   }
 }

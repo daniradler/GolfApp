@@ -961,8 +961,10 @@ function holeInfo(n){
     const mid = gmid(mh), tees = holeTees(mh), want = TEES.findIndex(t => t.c === colorOf(course.tee || ''));
     const c = want < 0 ? null : TEES.map((t, i) => [t.c, Math.abs(i - want)]).filter(([k]) => tees[k]).sort((a, b) => a[1] - b[1])[0]?.[0];
     const tee = tees[c] || mh.tee;
-    return { par: sc?.[0], yds: sc?.[1] ?? yd(tee, mid), hcp: sc?.[2], teeColor: tees[c] ? c : null,
-             oh:{ ref:n, line:[tee, mid], mapped:mh },
+    if (mh.bend === undefined) mh.bend = fitBend(mh.tee, mid, mh.fairway);    // maps saved before bends existed
+    const line = holeLine(tee, mh);
+    return { par: sc?.[0], yds: sc?.[1] ?? lineYds(line), hcp: sc?.[2], teeColor: tees[c] ? c : null,
+             oh:{ ref:n, line, mapped:mh },
              green:{ front:mh.front, mid, back:mh.back, poly:mh.green } };
   }
   const oh = osmData?.holes.find(h => h.ref === n);
@@ -1259,7 +1261,7 @@ function drawMapped(h, layer, n){
   /* a small dot in each tee's colour */
   Object.entries(holeTees(h)).forEach(([c, pt]) => { const t = teeOf(c);
     if (t) L.circleMarker(pt, { radius:5, color:'#04182C', weight:2, fillColor:t.bg, fillOpacity:1, interactive:false }).addTo(layer); });
-  if (n){ L.polyline([h.tee, gmid(h)], { color:'#EAF3FF', weight:2, opacity:.8, dashArray:'6 6', interactive:false }).addTo(layer); holeTag(n, h.tee).addTo(layer); }
+  if (n){ L.polyline(holeLine(h.tee, h), { color:'#EAF3FF', weight:2, opacity:.8, dashArray:'6 6', interactive:false }).addTo(layer); holeTag(n, h.tee).addTo(layer); }
 }
 
 /* ---------- Map a course: crosshair steps, then shapes you can fine-tune ---------- */
@@ -1288,12 +1290,12 @@ function checkHtml(m){
   const mid = gmid(m); let off = false;
   /* every tee you marked, against that colour's scorecard yardage when there is one */
   const parts = TEES.filter(t => m.tees[t.c]).map(t => {
-    const y = yd(m.tees[t.c], mid), sc = scColorYards(m.n, t.c), ok = sc && Math.abs(y - sc) / sc < 0.12;
+    const y = lineYds(holeLine(m.tees[t.c], m)), sc = scColorYards(m.n, t.c), ok = sc && Math.abs(y - sc) / sc < 0.12;
     if (sc && !ok) off = true;
     return `${t.name} <span class="check ${sc ? (ok ? 'ok' : 'off') : ''}">${y}</span>${sc ? ` (card ${sc}${ok ? ' ✓' : ''})` : ''}`;
   });
-  return 'Tee to middle of green: ' + parts.join(' · ')
-    + (off ? '<br>Far off the card usually means the wrong tee or green (doglegs play a bit longer).' : '');
+  return (m.bend ? 'Tee to middle of green, around the dogleg: ' : 'Tee to middle of green: ') + parts.join(' · ')
+    + (off ? '<br>Far off the card usually means the wrong tee or green.' : '');
 }
 
 /* ----- predicted outlines (metres around a point; all shapes stay editable) ----- */
@@ -1344,6 +1346,35 @@ function predictShapes(m){
     ? osmShapeAt(osmData?.water, z.pt, 0) || ellipseAt(z.pt, [1, 0], 20, 20, 12)
     : osmShapeAt(osmData?.bunkers, z.pt, 6, 8) || ellipseAt(z.pt, [1, 0], 8, 8, 6); });   // bunkers are small: few dots
 }
+/* the hole's line: tee → one bend point → green, placed so the line runs down the fairway as closely as it can.
+   Every spot inside the fairway is tried as the bend; the one with the least squared distance to the
+   whole fairway wins. null when a straight line fits about as well (no dogleg). */
+function fitBend(tee, mid, fw){
+  if (!tee || !mid || !(fw?.length > 2)) return null;
+  const P = fw.map(p => toXY(p, tee)), G = toXY(mid, tee), len = Math.hypot(...G);
+  const xs = P.map(p => p[0]), ys = P.map(p => p[1]), x0 = Math.min(...xs), y0 = Math.min(...ys);
+  const step = Math.max(2, Math.sqrt((Math.max(...xs) - x0) * (Math.max(...ys) - y0) / 600));   // ~600 sample spots
+  const pts = [], Q = P.map(p => [p[1], p[0]]);          // inPoly wants [y, x]
+  for (let x = x0 + step / 2; x < Math.max(...xs); x += step)
+    for (let y = y0 + step / 2; y < Math.max(...ys); y += step) if (inPoly([y, x], Q)) pts.push([x, y]);
+  if (pts.length < 12 || len < 50) return null;
+  const d2 = (p, a, b) => { const v = [b[0] - a[0], b[1] - a[1]], w = [p[0] - a[0], p[1] - a[1]];
+    const t = Math.max(0, Math.min(1, (w[0] * v[0] + w[1] * v[1]) / (v[0] ** 2 + v[1] ** 2 || 1)));
+    return (w[0] - t * v[0]) ** 2 + (w[1] - t * v[1]) ** 2; };
+  const cost = B => pts.reduce((s, p) => s + Math.min(d2(p, [0, 0], B), d2(p, B, G)), 0);
+  let best = null, bc = Infinity;
+  for (const B of pts){ const c = cost(B); if (c < bc){ bc = c; best = B; } }
+  const off = Math.abs(best[0] * G[1] - best[1] * G[0]) / len, along = (best[0] * G[0] + best[1] * G[1]) / len;
+  if (off < 8 || bc > cost(G) * .8 || along < len * .15 || along > len * .95) return null;   // basically straight
+  return toLL(best, tee);
+}
+/* the line a hole is played along; the bend only counts when it's ahead of this tee */
+function holeLine(tee, h){
+  const mid = gmid(h), b = h.bend;
+  if (!b || distM(tee, b) < 40 || distM(b, mid) > distM(tee, mid)) return [tee, mid];
+  return [tee, b, mid];
+}
+const lineYds = l => Math.round(lineLen(l) * M2YD);
 /* the shapes you can pick to edit, in order */
 function shapeList(m){
   const L0 = [['green', 'Green'], ...TEES.filter(t => m.tees[t.c]).map(t => ['t:' + t.c, `${t.name} tee`])];
@@ -1381,6 +1412,7 @@ function renderMapper(fly){
     done: ['Course mapped!', `All ${holeCount()} holes are mapped. ` + (lastSave === 'folder' ? 'Saved in the GolfCourseMaps folder.' : 'Saved on this device.')]
   }[m.step];
   $('#mapTitle').textContent = T[0];
+  if (['shape', 'review'].includes(m.step)) m.bend = fitBend(m.tee, gmid(m), m.shapes.fairway);
   const extra = ['shape', 'review'].includes(m.step) ? checkHtml(m) : '';
   $('#mapHint').innerHTML = (m.flash ? `<b class="check ok">${m.flash}</b> ` : '') + esc(T[1]) + (extra ? (T[1] ? '<br>' : '') + extra : '');
   m.flash = null;
@@ -1506,7 +1538,7 @@ async function saveHole(){
     ids:{ app:course.id, oga:course.ogaId || null, gca:course.gcaId || null }, holes:{} };
   const tb = Object.fromEntries(Object.entries(m.shapes.teeboxes || {}).filter(([c, p]) => m.tees[c] && p));
   courseMap.holes[m.n] = { tees:{ ...m.tees }, tee:m.tee, front:m.front, back:m.back, green:m.shapes.green,
-    teeboxes:tb, fairway:m.shapes.fairway || null,
+    teeboxes:tb, fairway:m.shapes.fairway || null, bend:m.bend || null,
     hazards:m.hazards.filter(z => z.shape).map(z => ({ type:z.type, shape:z.shape })), updated:new Date().toISOString() };
   lastSave = await saveCourseMap();
   if (!lastSave){ alert("Couldn't save: this device's storage is full or blocked."); return; }
@@ -1543,7 +1575,9 @@ function drawMapper(){
     const h = { tees:m.tees, tee:m.tee, front:m.front, back:m.back, green:m.shapes.green, teeboxes:m.shapes.teeboxes, fairway:m.shapes.fairway,
       hazards:m.hazards.map(z => ({ type:z.type, shape:z.shape })) };
     drawMapped(h, mapLayer);
-    L.polyline([m.tee, gmid(m)], { color:'#4FB3FF', weight:3, interactive:false }).addTo(mapLayer);
+    m.bend = fitBend(m.tee, gmid(m), m.shapes.fairway);   // refit whenever the fairway changes
+    L.polyline(holeLine(m.tee, m), { color:'#4FB3FF', weight:3, interactive:false }).addTo(mapLayer);
+    if (m.bend) L.circleMarker(m.bend, { radius:6, color:'#04182C', weight:2, fillColor:'#4FB3FF', fillOpacity:1, interactive:false }).addTo(mapLayer);
     /* tap an outline to edit it; small shapes go on top so they win over the fairway/green */
     const keys = shapeList(m).map(([k]) => k), order = k => k === 'fairway' ? 0 : k === 'green' ? 1 : k[0] === 't' ? 2 : 3;
     keys.sort((a, b) => order(a) - order(b)).forEach(k => { const sh = selShape({ ...m, sel:k });

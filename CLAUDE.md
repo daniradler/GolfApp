@@ -130,7 +130,14 @@ saying something works.
      turned map), faded midpoint dots add a point when dragged, tapping a dot
      removes it (min 3). **Reset shape** / **Remove shape** (fairway and hazards
      only) sit above Back / Save hole.
-   - Check line: each marked tee→middle of green vs that color's scorecard yards
+   - **Dogleg bend** (`fitBend()`): one point that makes tee → bend → green
+     follow the fairway — every grid spot inside the fairway (~600) is tried and
+     the one with the least squared distance to the fairway wins; none when
+     straight fits about as well (<8 m off line or <20% better). Refit whenever
+     the fairway changes (shown as a blue dot), saved as `bend`; holes saved
+     without one get it computed on open. `holeLine(tee, h)` drops the bend when
+     it's behind that tee. Used for the drawn line, round line and yardages.
+   - Check line: each marked tee→middle of green (along the bent line) vs that color's scorecard yards
      (`scColorYards()`; green if within 12%).
    - In a round (`holeInfo()`), a mapped hole starts from the tee whose color
      matches the tee picked on the overview, else the nearest marked color,
@@ -230,7 +237,7 @@ a real bug once).
    (`speechSynthesis`) on tap; optionally earbud/watch media button via the
    Media Session API. GPS needs HTTPS (fine on Netlify and localhost).
 2. Shot tracking (mark shot → walk to ball → distance) and per-club averages.
-3. Mapper extras: a bend point for doglegs, carry distances to hazards in a
+3. Mapper extras: carry distances to hazards in a
    round, sharing maps between players without going through GitHub.
 4. **Native apps** for background GPS and a tap-to-speak watch button:
    Swift/SwiftUI + watchOS, or Kotlin + Wear OS, depending on his phone.
