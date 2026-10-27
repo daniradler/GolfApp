@@ -96,7 +96,11 @@ saying something works.
    × hides it for that round only, returns next round. Errors always show.
 5. **Map a course** (mode `'mapping'`, `mapper` state object, `renderMapper()`):
    one hole at a time, starting at the first hole not yet in your course map.
-   Steps (bar on the card): **Tee → Front → Back → Hazards → Shapes**.
+   Steps (bar on the card): **Tee → Front → Back → Hazards → Shapes**. The step
+   bar is tappable (`goStep()`; a step opens once the marks before it exist,
+   `stepOpen()`). **‹ Back / Next ›** always sit in the same place at the bottom
+   of the card (`#mapNav`, same size on every step; Next becomes Save hole /
+   Next hole / Play a round). No "Skip this hole": the ‹ › hole arrows do that.
    - Tee/front/back/hazards use a fixed **crosshair**, placed halfway between
      the top bar and the card (`placeCrosshair()`); `here()` reads the point
      under it and `flyUnder()` flies a point there (works on the turned map).
@@ -113,15 +117,19 @@ saying something works.
    - Guide: OpenStreetMap's hole line + green (dashed) when it has one; the map
      starts on its tee and is turned tee-up. No guide → starts at the previous
      hole's green.
-   - Hazards: crosshair + **+ Sand / + Water** (as many as you like), Undo, Next.
+   - Hazards: crosshair + **+ Sand / + Water** (as many as you like) and a ↶
+     undo-last button beside them.
    - Shapes (`predictShapes()`): green, a tee box per marked tee color, fairway, each hazard. An
      OpenStreetMap outline at that spot is reused (thinned to ~60 points); else
      green = ellipse from front/back, tee box = 16×10 m box, fairway = 35-yd strip
      from 30% of the hole to just short of the green (none under 230 yds), sand =
-     8 m circle, water = 20 m circle. Chips pick the shape; the map zooms to it.
+     8 m circle with 6 dots (OSM bunkers thinned to ≤8 points), water = 20 m circle. Chips pick the shape, or tap an outline on the map
+     (`pickShape()`; invisible tappable polygons, small shapes on top; also on the
+     review screen, which jumps to Shapes); the map zooms to it.
      `drawEditor()`: draggable white dots (Leaflet draggable markers; work on the
-     turned map), faded midpoint dots add a point when dragged, tap a dot then
-     **Remove point**. "No fairway" / "Remove hazard" / "Reset shape".
+     turned map), faded midpoint dots add a point when dragged, tapping a dot
+     removes it (min 3). **Reset shape** / **Remove shape** (fairway and hazards
+     only) sit above Back / Save hole.
    - Check line: each marked tee→middle of green vs that color's scorecard yards
      (`scColorYards()`; green if within 12%).
    - In a round (`holeInfo()`), a mapped hole starts from the tee whose color
@@ -129,7 +137,7 @@ saying something works.
      else the back tee; the hint says which ("From your course map (White tee)").
    - **Save hole** → `saveCourseMap()` → next unmapped hole; after the last one
      a "Course mapped!" screen with **Play a round**. Mapped holes open on a
-     review screen (Edit shapes / Start this hole over / Delete hole map).
+     review screen (‹ Back = edit shapes, Start this hole over, Delete hole map).
    - Finish (top right) → course overview; ‹ → course list (asks first if the
      hole has unsaved marks).
 

@@ -118,11 +118,12 @@ input::placeholder{color:var(--mist);opacity:.7}
 .crosshair i::after{top:20px;left:-12px;height:2px;width:64px}
 .crosshair span{position:absolute;left:0;top:-40px;transform:translate(-50%,-100%);white-space:nowrap;background:var(--deep);color:var(--ink);
   border:1px solid var(--line);border-radius:10px;padding:4px 10px;font:700 14px/1.2 var(--body);font-variant-numeric:tabular-nums}
-.msteps{display:flex;gap:4px;list-style:none;margin:0;padding:0}
-.msteps li{flex:1;text-align:center;font-size:11px;letter-spacing:.06em;text-transform:uppercase;font-weight:600;color:var(--mist);
-  border-top:3px solid var(--line);padding-top:4px}
-.msteps li.done{border-color:var(--play);color:var(--ink)}
-.msteps li.now{border-color:var(--ink);color:var(--ink)}
+.msteps{display:flex;gap:4px}
+.msteps button{flex:1;min-width:0;background:none;border:0;border-top:3px solid var(--line);padding:6px 0 4px;text-align:center;
+  font:600 11px/1.2 var(--body);letter-spacing:.06em;text-transform:uppercase;color:var(--mist)}
+.msteps button.done{border-color:var(--play);color:var(--ink)}
+.msteps button.now{border-color:var(--ink);color:var(--ink)}
+.msteps button:disabled{opacity:.45}
 .mtitle{margin:0;text-align:center;font-weight:600;font-size:17px;line-height:1.25}
 .mrow{display:flex;gap:8px}
 .mrow:empty{display:none}
@@ -130,13 +131,14 @@ input::placeholder{color:var(--mist);opacity:.7}
 .mrow button.go{background:var(--play);color:var(--play-ink);border-color:var(--play);flex:1.6;font-size:17px}
 .mrow button.sand{border-color:var(--sand)}.mrow button.water{border-color:var(--play)}
 .mrow button:disabled{opacity:.4}
+.mrow button.undo{flex:0 0 52px;font-size:22px;padding:8px 0}
+.mrow.nav button{flex:1;font-size:17px}   /* Back / Next: same size and place on every step */
 .mrow.small button{padding:9px 6px;font-size:13px;font-weight:500;background:transparent}
 .chips{display:flex;gap:6px;overflow-x:auto;padding-bottom:2px}
 .chips button{flex:0 0 auto;background:var(--field);color:var(--ink);border:1px solid var(--line);border-radius:999px;padding:7px 12px;font-size:13px;font-weight:600}
 .chips button[aria-pressed="true"]{background:var(--ink);color:var(--play-ink)}
 .check{font-weight:600}.check.ok{color:#7CD992}.check.off{color:var(--spot)}
 .vtx{background:#fff;border:2px solid #04182C;border-radius:50%;box-shadow:0 1px 4px rgba(0,0,0,.5)}
-.vtx.sel{background:var(--spot)}
 .vtx.mid{background:rgba(255,255,255,.55);border-color:rgba(4,24,44,.6)}
 .mark-tag{display:flex!important;align-items:center;justify-content:center;border-radius:50%;border:2px solid #04182C;font:700 11px/1 var(--body);color:#04182C}
 .spot-tag span{position:absolute;left:0;top:0;transform:translate(-50%,calc(-100% - 14px));white-space:nowrap;background:var(--deep);color:var(--spot);
@@ -298,7 +300,7 @@ input::placeholder{color:var(--mist);opacity:.7}
       <div class="holeinfo"><div class="num" id="mapHoleNum">Hole 1</div><div class="meta" id="mapHoleMeta"></div></div>
       <button class="step" id="mapNext" aria-label="Next hole">›</button>
     </div>
-    <ol class="msteps" id="mapSteps" aria-label="Steps"><li>Tee</li><li>Front</li><li>Back</li><li>Hazards</li><li>Shapes</li></ol>
+    <div class="msteps" id="mapSteps" role="group" aria-label="Steps"><button data-s="tee">Tee</button><button data-s="front">Front</button><button data-s="back">Back</button><button data-s="hazards">Hazards</button><button data-s="shape">Shapes</button></div>
     <p class="mtitle" id="mapTitle"></p>
     <p class="hint" id="mapHint"></p>
     <div class="teepick" id="teePick" hidden><label for="teeSelect">Tee color</label><select id="teeSelect"></select></div>
@@ -306,6 +308,7 @@ input::placeholder{color:var(--mist);opacity:.7}
     <div class="chips" id="shapeChips" hidden></div>
     <div class="mrow" id="mapRow"></div>
     <div class="mrow small" id="mapRow2"></div>
+    <div class="mrow nav" id="mapNav"></div>
   </div></div>
 </section>
 
@@ -1269,7 +1272,7 @@ function mapperGoto(n, how){
   mapper = { n, step: h ? 'review' : 'tee', tees:{ ...tees }, front:h?.front || null, back:h?.back || null,
     hazards: (h?.hazards || []).map(z => ({ type:z.type, pt:r6(centroid(z.shape)), shape:cp(z.shape) })),
     shapes: h ? { green:cp(h.green), teeboxes:Object.fromEntries(Object.entries(boxes).map(([c, p]) => [c, cp(p)])), fairway:cp(h.fairway) } : { teeboxes:{} },
-    sel:'green', vsel:null, dirty:false, userMoved:false, flash: mapper?.flash || null };
+    sel:'green', dirty:false, userMoved:false, flash: mapper?.flash || null };
   mapper.tee = backTee(mapper.tees); mapper.teeSel = nextTee(mapper.tees);
   renderMapper(true);
 }
@@ -1305,12 +1308,12 @@ function ellipseAt(c, dir, a, b, n){
   return out;
 }
 /* an OpenStreetMap outline already drawn at this spot, tidied for editing */
-function osmShapeAt(list, pt, maxM){
+function osmShapeAt(list, pt, maxM, most = 60){
   let best = null, bd = maxM;
   for (const p of list || []){ if (p.length < 3) continue; const d = inPoly(pt, p) ? 0 : distM(pt, centroid(p)); if (d <= bd){ bd = d; best = p; } }
   if (!best) return null;
   let s = best.slice(); if (s.length > 3 && s[0][0] === s[s.length-1][0] && s[0][1] === s[s.length-1][1]) s.pop();
-  const step = Math.ceil(s.length / 60);                 // at most ~60 points, so the dots stay usable
+  const step = Math.ceil(s.length / most);               // at most `most` points, so the dots stay usable
   return s.filter((_, i) => i % step === 0).map(r6);
 }
 function predictShapes(m){
@@ -1339,7 +1342,7 @@ function predictShapes(m){
   m.refit = false;
   m.hazards.forEach(z => { z.shape ||= z.type === 'water'
     ? osmShapeAt(osmData?.water, z.pt, 0) || ellipseAt(z.pt, [1, 0], 20, 20, 12)
-    : osmShapeAt(osmData?.bunkers, z.pt, 6) || ellipseAt(z.pt, [1, 0], 8, 8, 10); });
+    : osmShapeAt(osmData?.bunkers, z.pt, 6, 8) || ellipseAt(z.pt, [1, 0], 8, 8, 6); });   // bunkers are small: few dots
 }
 /* the shapes you can pick to edit, in order */
 function shapeList(m){
@@ -1351,13 +1354,15 @@ function shapeList(m){
 const selShape = m => m.sel[0] === 'h' ? m.hazards[+m.sel.slice(1)]?.shape
   : m.sel.startsWith('t:') ? m.shapes.teeboxes?.[m.sel.slice(2)] : m.shapes[m.sel];
 
+const SHAPE_HINT = 'Drag the white dots onto the edge. Drag a faded dot to add a point; tap a dot to remove it. Tap any outline to edit it.';
 function renderMapper(fly){
   const m = mapper; if (!m || !course) return;
   const n = m.n, sc = course.holes?.[n-1], g = guideHole(n), idx = MSTEPS.indexOf(m.step);
   $('#mapHoleNum').textContent = 'Hole ' + n;
   $('#mapHoleMeta').textContent = [sc?.[0] && `Par ${sc[0]}`, sc?.[1] && `${sc[1]} yds` + (course.tee && course.tees?.length > 1 ? ` (${course.tee})` : ''),
     courseMap?.holes?.[n] && 'Mapped ✓'].filter(Boolean).join(' · ') || `of ${holeCount()}`;
-  [...$('#mapSteps').children].forEach((li, i) => { li.className = idx < 0 || i < idx ? 'done' : i === idx ? 'now' : ''; });
+  [...$('#mapSteps').children].forEach((b, i) => { b.className = idx < 0 || i < idx ? 'done' : i === idx ? 'now' : '';
+    b.disabled = !stepOpen(m, b.dataset.s); b.setAttribute('aria-current', i === idx ? 'step' : 'false'); });
   const aim = ['tee', 'front', 'back', 'hazards'].includes(m.step);
   $('#crosshair').hidden = !aim;
   const prevH = courseMap?.holes?.[n-1];
@@ -1371,7 +1376,7 @@ function renderMapper(fly){
     hazards: ['Any sand or water on this hole?', m.hazards.length
       ? `${m.hazards.filter(z => z.type === 'sand').length} sand · ${m.hazards.filter(z => z.type === 'water').length} water added. Add more, or tap Next.`
       : 'Put the crosshair on each bunker or pond and tap Sand or Water. Tap Next when done (or if there are none).'],
-    shape: ['Fine-tune the outlines', 'Drag the white dots onto the edge. Drag a faded dot to add a point; tap a dot to remove it.'],
+    shape: ['Fine-tune the outlines', SHAPE_HINT],
     review: [`Hole ${n} is mapped`, ''],
     done: ['Course mapped!', `All ${holeCount()} holes are mapped. ` + (lastSave === 'folder' ? 'Saved in the GolfCourseMaps folder.' : 'Saved on this device.')]
   }[m.step];
@@ -1404,7 +1409,7 @@ function btn(row, label, fn, cls = '', disabled = false){
   b.onclick = fn; $(row).appendChild(b);
 }
 function renderMapperButtons(){
-  const m = mapper; $('#mapRow').innerHTML = ''; $('#mapRow2').innerHTML = ''; $('#shapeChips').hidden = m.step !== 'shape';
+  const m = mapper; $('#mapRow').innerHTML = $('#mapRow2').innerHTML = $('#mapNav').innerHTML = ''; $('#shapeChips').hidden = m.step !== 'shape';
   $('#teePick').hidden = $('#teeChips').hidden = m.step !== 'tee';
   const go = step => { m.step = step; renderMapper(true); };
   const set = (key, next) => () => { m[key] = here(); m.dirty = true; m.shapes.green = null; m.refit = true; go(next); };
@@ -1415,6 +1420,9 @@ function renderMapperButtons(){
     if (m.tee !== back) m.refit = true;
     m.teeSel = had ? c : nextTee(m.tees);
     m.flash = `${teeOf(c).name} tee ${had ? 'moved' : 'set'} ✓`; renderMapper(false); };
+  /* Back / Next always sit in the same place at the bottom of the card */
+  const nav = (back, next, nextLabel = 'Next ›', nextCls = '') => {
+    btn('#mapNav', '‹ Back', back || null, '', !back); btn('#mapNav', nextLabel, next || null, nextCls, !next); };
   switch (m.step){
     case 'tee': {
       const sel = $('#teeSelect'), t = teeOf(m.teeSel);
@@ -1429,50 +1437,63 @@ function renderMapperButtons(){
           if (m.tee !== back) m.refit = true; m.teeSel = x.c; m.dirty = true; renderMapper(false); };
         chips.appendChild(b); });
       chips.hidden = !chips.children.length;
-      btn('#mapRow', `${m.tees[t.c] ? 'Move' : 'Set'} ${t.name} tee`, () => setTee(here()), m.tee ? '' : 'go');
-      if (m.tee) btn('#mapRow', 'Next: green ›', () => go('front'), 'go');
+      btn('#mapRow', `${m.tees[t.c] ? 'Move' : 'Set'} ${t.name} tee`, () => setTee(here()), 'go');
       if (onCourse) btn('#mapRow2', `I'm on the ${t.name} tee (GPS)`, () => setTee(r6(me)));
-      btn('#mapRow2', 'Skip this hole', () => mapperStep(1));
+      nav(null, m.tee && (() => go('front')));
       break; }
-    case 'front': btn('#mapRow', '‹ Back', () => go('tee')); btn('#mapRow', 'Set front', set('front', 'back'), 'go'); break;
-    case 'back':  btn('#mapRow', '‹ Back', () => go('front')); btn('#mapRow', 'Set back', set('back', 'hazards'), 'go'); break;
+    case 'front':
+      btn('#mapRow', 'Set front', set('front', 'back'), 'go');
+      nav(() => go('tee'), m.front && (() => go('back'))); break;
+    case 'back':
+      btn('#mapRow', 'Set back', set('back', 'hazards'), 'go');
+      nav(() => go('front'), m.back && (() => go('hazards'))); break;
     case 'hazards':
       btn('#mapRow', '+ Sand', () => { m.hazards.push({ type:'sand', pt:here() }); m.dirty = true; renderMapper(false); }, 'sand');
       btn('#mapRow', '+ Water', () => { m.hazards.push({ type:'water', pt:here() }); m.dirty = true; renderMapper(false); }, 'water');
-      btn('#mapRow', 'Next ›', () => { predictShapes(m); m.sel = 'green'; m.vsel = null; go('shape'); }, 'go');
-      btn('#mapRow2', '‹ Back', () => go('back'));
-      btn('#mapRow2', 'Undo last', () => { m.hazards.pop(); renderMapper(false); }, '', !m.hazards.length);
+      btn('#mapRow', '↶', () => { m.hazards.pop(); renderMapper(false); }, 'undo', !m.hazards.length);
+      $('#mapRow').lastChild.setAttribute('aria-label', 'Undo last hazard');
+      nav(() => go('back'), () => goStep('shape'));
       break;
     case 'shape': {
       const chips = $('#shapeChips'); chips.innerHTML = '';
       shapeList(m).forEach(([k, label]) => { const b = document.createElement('button'); b.textContent = label;
-        b.setAttribute('aria-pressed', m.sel === k); b.onclick = () => { m.sel = k; m.vsel = null; renderMapperButtons(); drawMapper(); flyMapper(); }; chips.appendChild(b); });
-      btn('#mapRow', '‹ Back', () => go('hazards'));
-      btn('#mapRow', 'Save hole', saveHole, 'go');
-      const sh = selShape(m);
-      btn('#mapRow2', 'Remove point', () => { sh.splice(m.vsel, 1); m.vsel = null; m.dirty = true; renderMapper(false); }, '', m.vsel == null || !sh || sh.length <= 3);
-      if (m.sel === 'fairway' || m.sel[0] === 'h') btn('#mapRow2', m.sel === 'fairway' ? 'No fairway' : 'Remove hazard', () => {
-        if (m.sel === 'fairway') m.shapes.fairway = null; else m.hazards.splice(+m.sel.slice(1), 1);
-        m.sel = 'green'; m.vsel = null; m.dirty = true; renderMapper(false); });
-      btn('#mapRow2', 'Reset shape', () => { if (m.sel[0] === 'h') m.hazards[+m.sel.slice(1)].shape = null;
+        b.setAttribute('aria-pressed', m.sel === k); b.onclick = () => pickShape(k); chips.appendChild(b); });
+      chips.querySelector('[aria-pressed="true"]')?.scrollIntoView({ block:'nearest', inline:'nearest' });
+      btn('#mapRow', 'Reset shape', () => { if (m.sel[0] === 'h') m.hazards[+m.sel.slice(1)].shape = null;
         else if (m.sel.startsWith('t:')) m.shapes.teeboxes[m.sel.slice(2)] = null;
         else { m.shapes[m.sel] = null; if (m.sel === 'fairway') m.refit = true; }
-        predictShapes(m); m.vsel = null; m.dirty = true; renderMapper(false); });
+        predictShapes(m); m.dirty = true; renderMapper(false); });
+      const removable = m.sel === 'fairway' || m.sel[0] === 'h';      // the green and tee boxes always stay
+      btn('#mapRow', 'Remove shape', () => {
+        if (m.sel === 'fairway') m.shapes.fairway = null; else m.hazards.splice(+m.sel.slice(1), 1);
+        m.sel = 'green'; m.dirty = true; renderMapper(false); }, '', !removable);
+      nav(() => go('hazards'), saveHole, 'Save hole', 'go');
       break; }
     case 'review':
-      btn('#mapRow', 'Edit shapes', () => { m.sel = 'green'; m.vsel = null; go('shape'); });
-      btn('#mapRow', n0(m.n) ? 'Next hole ›' : 'Finish ✓', () => n0(m.n) ? mapperStep(1) : finishMapping(), 'go');
       btn('#mapRow2', 'Start this hole over', () => mapperGoto(m.n, 'fresh'));
       btn('#mapRow2', 'Delete hole map', async () => { if (!confirm(`Delete your map of hole ${m.n}?`)) return;
         delete courseMap.holes[m.n]; lastSave = await saveCourseMap(); drawOSM(osmData); mapperGoto(m.n); });
       if (lastSave === 'device') btn('#mapRow2', 'Send map file', sendMapFile);
+      nav(() => goStep('shape'), () => n0(m.n) ? mapperStep(1) : finishMapping(), n0(m.n) ? 'Next hole ›' : 'Finish ✓', 'go');
       break;
     case 'done':
-      btn('#mapRow', 'Play a round', () => { finishMapping(); startRound(); }, 'go');
-      btn('#mapRow2', 'Back to hole 1', () => mapperGoto(1));
       if (lastSave === 'device') btn('#mapRow2', 'Send map file', sendMapFile);
+      nav(() => mapperGoto(1), () => { finishMapping(); startRound(); }, 'Play a round', 'go');
       break;
   }
+}
+/* the step bar: tap any step you've got far enough to use */
+const stepOpen = (m, s) => s === 'tee' || !!m.tee && (s === 'front' || !!m.front && (s === 'back' || !!m.back));
+function goStep(s){
+  const m = mapper; if (!m || !stepOpen(m, s)) return;
+  if (s === 'shape'){ predictShapes(m); if (!selShape(m)) m.sel = 'green'; }
+  m.step = s; renderMapper(true);
+}
+/* pick a shape to edit, from its chip or by tapping it on the map */
+function pickShape(k){
+  const m = mapper; if (!m) return;
+  if (m.step !== 'shape'){ m.sel = k; goStep('shape'); return; }
+  m.sel = k; renderMapperButtons(); drawMapper(); flyMapper();
 }
 const n0 = n => n < holeCount();                     // is there a hole after this one?
 function mapperStep(d){
@@ -1523,6 +1544,11 @@ function drawMapper(){
       hazards:m.hazards.map(z => ({ type:z.type, shape:z.shape })) };
     drawMapped(h, mapLayer);
     L.polyline([m.tee, gmid(m)], { color:'#4FB3FF', weight:3, interactive:false }).addTo(mapLayer);
+    /* tap an outline to edit it; small shapes go on top so they win over the fairway/green */
+    const keys = shapeList(m).map(([k]) => k), order = k => k === 'fairway' ? 0 : k === 'green' ? 1 : k[0] === 't' ? 2 : 3;
+    keys.sort((a, b) => order(a) - order(b)).forEach(k => { const sh = selShape({ ...m, sel:k });
+      if (sh?.length > 2 && !(m.step === 'shape' && k === m.sel))
+        L.polygon(sh, { stroke:false, fill:true, fillOpacity:0, bubblingMouseEvents:false }).on('click', () => pickShape(k)).addTo(mapLayer); });
     if (m.step === 'shape') drawEditor();
   }
   /* each tee as a little tag in its own colour (the one you're marking gets a ring) */
@@ -1537,19 +1563,19 @@ function drawEditor(){
   editLayer = L.layerGroup().addTo(map);
   const line = L.polygon(sh, { color:'#FFD166', weight:3, fill:false, interactive:false }).addTo(editLayer);
   const icon = (cls, s) => L.divIcon({ className:'vtx' + cls, iconSize:[s, s] });
-  const redraw = () => setTimeout(() => { if (mapper === m && m.step === 'shape'){ drawMapper(); $('#mapHint').innerHTML = esc('Drag the white dots onto the edge. Drag a faded dot to add a point; tap a dot to remove it.') + '<br>' + checkHtml(m); } }, 0);
+  const redraw = () => setTimeout(() => { if (mapper === m && m.step === 'shape'){ drawMapper(); $('#mapHint').innerHTML = esc(SHAPE_HINT) + '<br>' + checkHtml(m); } }, 0);
   sh.forEach((p, i) => {
-    const mk = L.marker(p, { icon:icon(i === m.vsel ? ' sel' : '', 20), draggable:true, keyboard:false, zIndexOffset:1000 }).addTo(editLayer);
+    const mk = L.marker(p, { icon:icon('', 20), draggable:true, keyboard:false, zIndexOffset:1000 }).addTo(editLayer);
     mk.on('drag', e => { const q = e.target.getLatLng(); sh[i] = r6([q.lat, q.lng]); line.setLatLngs(sh); });
     mk.on('dragend', () => { m.dirty = true; redraw(); });
-    mk.on('click', () => { m.vsel = i; renderMapperButtons(); redraw(); });
+    mk.on('click', () => { if (sh.length <= 3) return; sh.splice(i, 1); m.dirty = true; redraw(); });   // tap a dot to remove it
   });
   sh.forEach((p, i) => {
     const q = sh[(i + 1) % sh.length], at = i + 1;
     const mk = L.marker([(p[0] + q[0]) / 2, (p[1] + q[1]) / 2], { icon:icon(' mid', 14), draggable:true, keyboard:false, zIndexOffset:900 }).addTo(editLayer);
     mk.on('dragstart', e => { const c = e.target.getLatLng(); sh.splice(at, 0, r6([c.lat, c.lng])); });
     mk.on('drag', e => { const c = e.target.getLatLng(); sh[at] = r6([c.lat, c.lng]); line.setLatLngs(sh); });
-    mk.on('dragend', () => { m.dirty = true; m.vsel = null; renderMapperButtons(); redraw(); });
+    mk.on('dragend', () => { m.dirty = true; redraw(); });
   });
 }
 function flyMapper(){
@@ -1588,6 +1614,7 @@ $('#osmClose').onclick = () => { $('#osmStatus').hidden = true; statusDismissed 
 $('#mapPrev').onclick = () => mapper && mapperStep(-1);
 $('#mapNext').onclick = () => mapper && mapperStep(1);
 $('#mapDone').onclick = finishMapping;
+$('#mapSteps').onclick = e => { const s = e.target.closest('button')?.dataset.s; if (s) goStep(s); };
 /* start screen: play a round, or map a course; both then pick a course */
 function showPicker(m){
   appMode = m; $('#start').hidden = true; $('#home').hidden = false;
