@@ -82,7 +82,9 @@ saying something works.
    **End round** (top right) returns to overview.
    - **Set my location** (stand-in until GPS works on the phone): tap it, then
      tap the map; that point becomes `me` (`manualMe`, GPS updates ignored while
-     set), stays across holes, cleared by End round. `placing` = waiting for the tap.
+     set), cleared by End round. Start round and each hole change put you on
+     that hole's tee (`meToTee()`, the tee color you're playing); a hole with no
+     tee on the map clears it. Real GPS (`me` set, not manual) is left alone. `placing` = waiting for the tap.
    - GPS (`startGPS()` on Start round, `stopGPS()` on End round / back):
      `watchPosition`, blue dot + accuracy circle on the map. Your own green pin
      replaces the mapped green and gives a middle number only. Over 1500 yds

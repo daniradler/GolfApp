@@ -1128,7 +1128,14 @@ function fitCourse(){
   if (pts.length) map.flyToBounds(L.latLngBounds(pts), { paddingTopLeft:[24,96], paddingBottomRight:[24, Math.round(innerHeight*0.32)], duration:.6 });
   else map.setView(course.center, course.zoom);
 }
-function startRound(){ hole = 1; spot = null; startGPS(); setMode('round'); }
+function startRound(){ hole = 1; spot = null; startGPS(); meToTee(); setMode('round'); }
+/* a new hole starts you on its tee (the one for the tee color you're playing), until real GPS takes over */
+function meToTee(){
+  if (me && !manualMe) return;
+  const t = holeInfo(hole).oh?.line[0];
+  if (t){ me = t; meAcc = 0; manualMe = true; }
+  else { me = null; manualMe = false; }             // no tee on the map: set your location yourself
+}
 function endRound(){ stopGPS(); setMode('overview'); }
 
 /* ---------- live GPS: yards from you to the green, and to a spot you tap ---------- */
@@ -1702,8 +1709,8 @@ function updateReadout(){
   el.textContent = t; el.hidden = !t;
 }
 
-$('#holePrev').onclick = () => { const c = holeCount(); hole = hole > 1 ? hole-1 : c; pinning = false; spot = null; renderHole(); };
-$('#holeNext').onclick = () => { const c = holeCount(); hole = hole < c ? hole+1 : 1; pinning = false; spot = null; renderHole(); };
+$('#holePrev').onclick = () => { const c = holeCount(); hole = hole > 1 ? hole-1 : c; pinning = false; spot = null; meToTee(); renderHole(); };
+$('#holeNext').onclick = () => { const c = holeCount(); hole = hole < c ? hole+1 : 1; pinning = false; spot = null; meToTee(); renderHole(); };
 $('#pinGreen').onclick = () => { pinning = !pinning; placing = false; renderHole(false); };
 $('#setMe').onclick = () => { placing = !placing; pinning = false; renderHole(false); };
 $('#osmRetry').onclick = () => course && loadOSM(course, true);
