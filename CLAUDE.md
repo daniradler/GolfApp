@@ -71,9 +71,9 @@ saying something works.
    yards (tee) · Hcp (the arrows change holes). **Blue route** (drawn in
    `drawLive()`): from you to the middle of the green through any bends still
    ahead of you (bends within 30 m or behind you are dropped), so it shortens as
-   you move; with no location (or >1500 yds away) it's the whole hole line. A
-   white-on-see-through-black label halfway along it (`alongLine()`, `.route-tag`)
-   shows yards you → middle of green (straight line), or the hole line's length.
+   you move; with no location (or >1500 yds away) it's the whole hole line. No
+   label on it. The tapped spot's label (`.spot-tag`) and the card's spot box
+   are white text and outline on black; the label sits to the right of the dot.
    **Compact bottom card** (`.holecard.compact`): Hole N, **Set my location**,
    **Pin the green** (hidden on mapped holes), and the yellow spot box when a spot
    is set. No front/middle/back numbers and no hint text any more.

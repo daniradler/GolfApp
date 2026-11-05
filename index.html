@@ -99,10 +99,6 @@ input::placeholder{color:var(--mist);opacity:.7}
 .holecard.compact .pinrow{align-items:center}
 .holecard.compact .num{flex:0 0 auto;font-family:var(--display);font-weight:800;font-size:22px;letter-spacing:.03em;text-transform:uppercase;padding:0 4px}
 .holecard.compact .pinbtn{padding:9px 8px;font-size:14px}
-/* yards from you (or the tee) to the green, sitting on the blue route line */
-.route-tag span{position:absolute;left:0;top:0;transform:translate(-50%,-50%);white-space:nowrap;background:rgba(0,0,0,.6);color:#fff;
-  border-radius:10px;padding:3px 8px;font:800 20px/1.1 var(--display);font-variant-numeric:tabular-nums}
-.route-tag small{font:600 11px var(--body);margin-left:3px}
 .map-screen.round .layer-btn{top:calc(140px + env(safe-area-inset-top,0px))}
 .map-screen.round .osm-status{top:calc(140px + env(safe-area-inset-top,0px))}
 .pinbtn{flex:1;background:var(--field);color:var(--ink);border:1px solid var(--line);border-radius:12px;padding:12px;font-weight:600;font-size:15px}
@@ -115,9 +111,9 @@ input::placeholder{color:var(--mist);opacity:.7}
 .spot b{display:block;font-family:var(--display);font-weight:800;font-size:30px;line-height:1.05;font-variant-numeric:tabular-nums}
 .yards .mid b{font-size:40px;color:var(--play)}
 /* a spot tapped on the map */
-.spot{display:flex;align-items:center;gap:6px;border:1px solid var(--spot);background:rgba(255,209,102,.1);border-radius:12px;padding:6px 4px 6px 8px;text-align:center}
+.spot{display:flex;align-items:center;gap:6px;border:1px solid #fff;background:#000;border-radius:12px;padding:6px 4px 6px 8px;text-align:center}
 .spot div{flex:1}
-.spot b{font-size:26px;color:var(--spot)}
+.spot b{font-size:26px;color:#fff}
 .spot .x{flex:0 0 auto;width:36px;height:36px;border-radius:50%;background:transparent;color:var(--mist);font-size:24px;line-height:1}
 /* Map a course */
 .crosshair{position:absolute;z-index:1050;left:50%;top:50%;width:0;height:0;pointer-events:none}
@@ -156,8 +152,9 @@ input::placeholder{color:var(--mist);opacity:.7}
 .vtx{background:#fff;border:2px solid #04182C;border-radius:50%;box-shadow:0 1px 4px rgba(0,0,0,.5)}
 .vtx.mid{background:rgba(255,255,255,.55);border-color:rgba(4,24,44,.6)}
 .mark-tag{display:flex!important;align-items:center;justify-content:center;border-radius:50%;border:2px solid #04182C;font:700 11px/1 var(--body);color:#04182C}
-.spot-tag span{position:absolute;left:0;top:0;transform:translate(-50%,calc(-100% - 14px));white-space:nowrap;background:var(--deep);color:var(--spot);
-  border:1px solid var(--spot);border-radius:10px;padding:4px 8px;font:700 13px/1.25 var(--body);text-align:center;box-shadow:0 2px 6px rgba(0,0,0,.4)}
+/* the tapped spot's yards: off to the side of the dot so the hole stays in view */
+.spot-tag span{position:absolute;left:0;top:0;transform:translate(16px,-50%);white-space:nowrap;background:#000;color:#fff;
+  border:1px solid #fff;border-radius:10px;padding:4px 8px;font:700 13px/1.25 var(--body);text-align:center;box-shadow:0 2px 6px rgba(0,0,0,.4)}
 .nomap{position:absolute;z-index:1050;left:50%;bottom:calc(200px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);width:min(380px,calc(100% - 24px));background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:10px 14px;display:flex;flex-direction:column;gap:4px;text-align:center}
 .nomap b{font-size:14px!important}.nomap p{font-size:13px!important}
 .nomap b{font-size:16px}
@@ -1187,7 +1184,7 @@ function drawLive(){
     if (meAcc > 15) L.circle(me, { radius:meAcc, color:'#4FB3FF', weight:1, fillOpacity:.12, interactive:false }).addTo(liveLayer);
     L.circleMarker(me, { radius:8, color:'#FFFFFF', weight:3, fillColor:'#1E88FF', fillOpacity:1, interactive:false }).addTo(liveLayer);
   }
-  /* the blue route: from you (when you're on the hole) to the green, else the whole hole; yards sit on it */
+  /* the blue route: from you (when you're on the hole) to the green, else the whole hole */
   const info = holeInfo(hole), hl = info.oh?.line;
   let route = hl ? [...hl.slice(0, -1), g.mid || hl[hl.length - 1]] : null;
   if (me && g.mid && !far){
@@ -1196,9 +1193,6 @@ function drawLive(){
   }
   if (route?.length > 1){
     L.polyline(route, { color:'#4FB3FF', weight:4, interactive:false }).addTo(liveLayer);
-    const yds = me && g.mid && !far ? yd(me, g.mid) : lineYds(route);
-    L.marker(alongLine(route, .5), { icon:L.divIcon({ className:'route-tag', html:`<span>${yds}<small>yds</small></span>`, iconSize:[0,0] }),
-      interactive:false, keyboard:false }).addTo(liveLayer);
   }
   if (spot){
     const line = { color:'#FFD166', weight:3, dashArray:'2 8', lineCap:'round', interactive:false };
@@ -1210,14 +1204,6 @@ function drawLive(){
   }
 }
 $('#spotClear').onclick = () => { spot = null; drawLive(); };
-/* the point a fraction of the way along a line (by distance) */
-function alongLine(l, f){
-  let left = lineLen(l) * f;
-  for (let i = 1; i < l.length; i++){ const d = distM(l[i-1], l[i]);
-    if (left <= d){ const t = d ? left / d : 0; return [l[i-1][0] + (l[i][0] - l[i-1][0]) * t, l[i-1][1] + (l[i][1] - l[i-1][1]) * t]; }
-    left -= d; }
-  return l[l.length - 1];
-}
 
 function renderHole(fly = true){
   const n = hole, info = holeInfo(n), mine = info.oh?.mapped, pin = !mine && (greens[course.id] || {})[n], gp = info.green?.poly;
