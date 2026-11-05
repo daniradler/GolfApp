@@ -436,6 +436,21 @@ const placeOf = L => {
 };
 const gcaName = c => !c.course_name || c.course_name === c.club_name || norm(c.club_name).includes(norm(c.course_name))
   ? (c.club_name || c.course_name) : !c.club_name ? c.course_name : `${c.club_name} – ${c.course_name}`;
+/* iGolf, through our Netlify service (/api/igolf keeps the keys secret, saves answers,
+   counts billed requests). Returns nothing until the iGolf connection is finished. */
+async function igolfSearch(term){
+  if (!igolfLive()) return [];
+  const d = await igolfGet(`action=search&q=${encodeURIComponent(term)}`, 10000);
+  return (d.courses || []).slice(0, 25).map(c => ({ src:'igolf', id:String(c.id), name:c.name,
+    sub:[[c.city, c.state].filter(Boolean).join(', '), 'GPS course map'].filter(Boolean).join(' · '),
+    center: c.lat != null ? [c.lat, c.lon] : null }));
+}
+let igolfOff = false;                                   // set once the service says it isn't set up, so we stop asking
+const igolfLive = () => !igolfOff && (location.protocol === 'https:' || /^(localhost|127\.0\.0\.1)$/.test(location.hostname));
+async function igolfGet(qs, ms){
+  try { return await getJSON(`/api/igolf?${qs}`, ms); }
+  catch (e){ if (/HTTP (404|501|503)/.test(e.message)) igolfOff = true; throw e; }
+}
 async function gcaSearch(term){
   const d = await getJSON(`/api/gca?search=${encodeURIComponent(term)}`, 10000);
   return (d.courses || []).slice(0, 25).map(c => ({ src:'gca', id:c.id, name:gcaName(c),
@@ -466,6 +481,7 @@ async function runSearch(q){
     res.forEach(r => { if (r.status === 'fulfilled'){ ogaOk = true; pool.push(...r.value); } });
   };
   const gcaRun = gcaSearch(q).catch(() => []);       // runs alongside OpenGolfAPI
+  const igRun = igolfSearch(q).catch(() => []);       // iGolf, once its connection is finished (silent until then)
   await runOga(terms);
   /* nothing at all? maybe a typo — try the first letters of each long word */
   if (ogaOk && !pool.length){
@@ -479,8 +495,12 @@ async function runSearch(q){
   }
   if (seq !== searchSeq) return;
   if (gca.length) ogaOk = true;
-  /* prefer GolfCourseAPI's copy of a course both have (men's and women's tees, rating, slope) */
-  pool = [...gca, ...pool.filter(o => !gca.some(g => sameCourse(g, o)))];
+  const ig = await igRun;
+  if (seq !== searchSeq) return;
+  if (ig.length) ogaOk = true;
+  /* prefer iGolf's copy of a course (GPS hole maps), then GolfCourseAPI's (men's and women's tees, rating, slope) */
+  const gca2 = gca.filter(g => !ig.some(i => sameCourse(i, g)));
+  pool = [...ig, ...gca2, ...pool.filter(o => !ig.some(i => sameCourse(i, o)) && !gca2.some(g => sameCourse(g, o)))];
   const seen = new Set();
   let list = rank(q, pool.filter(r => !seen.has(r.src + r.id) && seen.add(r.src + r.id)));
   const strong = list.length && list[0].score >= 4;      // every word matched
@@ -524,8 +544,42 @@ function openResult(r){
   if (k) return openMap(k);
   if (r.src === 'oga') return openOga(r.id, r.name, r.center);
   if (r.src === 'gca') return openGca(r.id, r.name, r.center);
+  if (r.src === 'igolf') return openIgolf(r.id, r.name, r.center);
   openMap({ id:r.id, name:r.name, place:r.sub.replace(' · Map only', ''), center:r.center, zoom:16, holes:null });
 }
+/* an iGolf course: its scorecard plus its GPS hole map (the GolfCourseMaps format) */
+async function openIgolf(id, name, center){
+  $('#readyCourse').textContent = name; $('#readyTag').textContent = 'Loading the course from iGolf…'; $('#ready').hidden = false;
+  let d = null; try { d = await igolfGet(`action=course&id=${encodeURIComponent(id)}`, 20000); } catch {}
+  if ($('#ready').hidden) return;
+  $('#ready').hidden = true;
+  const c0 = d?.course?.lat != null ? [d.course.lat, d.course.lon] : center;
+  if (!c0) return lookupCourse(name);
+  const c = { id:'igolf-' + id, igolfId:id, name:d?.course?.name || name, center:c0, zoom:16, holes:null,
+    place:'Scorecard unavailable right now', providerMap:d?.map || null };
+  if (d?.scorecard) attachScorecard(c, d.scorecard);
+  openMap(c);
+}
+/* for any other course: does iGolf have a GPS map of it? (one saved lookup per course on the service) */
+async function loadProviderMap(k){
+  if (k.providerMap){ providerMap = k.providerMap; return afterProviderMap(); }
+  if (!igolfLive() || !k.center) return;
+  try {
+    const d = await igolfGet(`action=near&lat=${(+k.center[0]).toFixed(5)}&lon=${(+k.center[1]).toFixed(5)}&name=${encodeURIComponent(k.name)}`, 20000);
+    if (course !== k || !d?.found) return;
+    k.providerMap = d.map; providerMap = d.map;
+    if (!k.hd?.length && d.scorecard) attachScorecard(k, d.scorecard);
+    afterProviderMap();
+  } catch {}
+}
+function afterProviderMap(){
+  if (map && providerMap) map.attributionControl?.addAttribution(IGOLF_ATTR);
+  if (map) drawOSM(osmData);
+  refreshStatus();
+  if (mode === 'round') renderHole(false); else if (mode === 'overview') render();
+}
+const IGOLF_ATTR = 'Course data © iGolf';
+
 /* GolfCourseAPI course → the same shape as an OpenGolfAPI scorecard */
 function trimGca(d){
   const L = d.location || {}, male = d.tees?.male || [], female = d.tees?.female || [];
@@ -897,8 +951,10 @@ function applyOSM(k, F, source){
 /* "9 of 18 holes mapped…": your own course map first, then what OpenStreetMap adds */
 function refreshStatus(){
   const k = course; if (!k) return;
-  const mine = Object.keys(courseMap?.holes || {}).map(Number), total = k.holes?.length || 18;
-  const pre = mine.length ? `${mine.length < total ? mine.length + ' of ' + total : 'All ' + mine.length} holes from your course map` : '';
+  const own = Object.keys(courseMap?.holes || {}).map(Number), total = k.holes?.length || 18;
+  const prov = Object.keys(providerMap?.holes || {}).map(Number).filter(n => !own.includes(n)), mine = [...own, ...prov];
+  const part = (n, src) => `${n < total ? n + ' of ' + total : 'All ' + n} holes from ${src}`;
+  const pre = [own.length && part(own.length, 'your course map'), prov.length && (own.length ? `${prov.length} from iGolf` : part(prov.length, 'iGolf'))].filter(Boolean).join(' · ');
   if (!osmData){ if (pre) setStatus(pre, null); return; }
   const rest = osmData.holes.filter(h => !mine.includes(h.ref)), est = rest.filter(h => h.est).length, n = rest.length, g = rawOSM.greens.length;
   const lab = rest.some(h => h.est === 'label'), gue = rest.some(h => h.est === 'guess');
@@ -920,7 +976,7 @@ const holeTag = (n, at) => L.marker(at, { icon: L.divIcon({ className:'hole-tag'
 /* whole-course layer, shown on the overview */
 function drawOSM(F){
   osmLayer?.remove(); osmLayer = L.layerGroup();
-  const mine = courseMap?.holes || {};                // holes you mapped replace OpenStreetMap's
+  const mine = playHoles();                          // holes you (or iGolf) mapped replace OpenStreetMap's
   if (F){
     for (const [kind, st] of Object.entries(STYLE)) F[kind].forEach(p => p.length > 2 && L.polygon(p, { ...st, interactive:false }).addTo(osmLayer));
     F.holes.forEach(h => { if (mine[h.ref]) return;
@@ -953,9 +1009,9 @@ function drawHoleFeatures(h, greenPoly, layer){
   holeTag(h.ref, h.line[0]).addTo(layer);
 }
 
-function holeCount(){ return course.holes?.length || Math.max(18, ...(osmData?.holes.map(h => h.ref) || [0]), ...Object.keys(courseMap?.holes || {}).map(Number)); }
+function holeCount(){ return course.holes?.length || Math.max(18, ...(osmData?.holes.map(h => h.ref) || [0]), ...Object.keys(playHoles() || {}).map(Number)); }
 function holeInfo(n){
-  const sc = course.holes?.[n-1], mh = courseMap?.holes?.[n];
+  const own = courseMap?.holes?.[n], sc = course.holes?.[n-1], mh = own || providerMap?.holes?.[n];
   if (mh){                                           // your own map of this hole comes first
     /* start from the tee colour you're playing (picked on the course screen), else the nearest one marked, else the back tee */
     const mid = gmid(mh), tees = holeTees(mh), want = TEES.findIndex(t => t.c === colorOf(course.tee || ''));
@@ -964,7 +1020,7 @@ function holeInfo(n){
     if (mh.bend === undefined) mh.bend = fitBend(mh.tee, mid, mh.fairway);    // maps saved before bends existed
     const line = holeLine(tee, mh);
     return { par: sc?.[0], yds: sc?.[1] ?? lineYds(line), hcp: sc?.[2], teeColor: tees[c] ? c : null,
-             oh:{ ref:n, line, mapped:mh },
+             oh:{ ref:n, line, mapped:mh, provider: own ? null : 'iGolf' },
              green:{ front:mh.front, mid, back:mh.back, poly:mh.green } };
   }
   const oh = osmData?.holes.find(h => h.ref === n);
@@ -1010,10 +1066,12 @@ function openMap(k){
     } else map.setView(k.center, k.zoom);
     setTimeout(() => map.invalidateSize(), 60);
   }
-  courseMap = null; mapper = null;
+  courseMap = null; mapper = null; providerMap = null;
+  map?.attributionControl?.removeAttribution(IGOLF_ATTR);
   if (appMode === 'map') startMapping(); else setMode('overview');
   loadOSM(k);
   enrich(k);
+  loadProviderMap(k);                                   // iGolf's GPS map, when connected
   /* your own map of this course, if you've made one; the mapper then starts at the first hole you haven't mapped */
   loadCourseMap(k).then(() => { if (course === k && mode === 'mapping' && mapper && !mapper.dirty && !Object.keys(mapper.tees || {}).length) mapperGoto(firstUnmapped()); });
 }
@@ -1063,7 +1121,7 @@ function flyToTurned(pts, pad, maxZoom){
 function fitCourse(){
   const pts = [...(!osmData ? [] : osmData.boundary.length ? osmData.boundary.flat()
     : [...osmData.holes.flatMap(h => h.line), ...osmData.greens.flat()]),
-    ...Object.values(courseMap?.holes || {}).flatMap(h => [h.tee, h.front, h.back])];
+    ...Object.values(playHoles()).flatMap(h => [h.tee, h.front, h.back])];
   if (pts.length) map.flyToBounds(L.latLngBounds(pts), { paddingTopLeft:[24,96], paddingBottomRight:[24, Math.round(innerHeight*0.32)], duration:.6 });
   else map.setView(course.center, course.zoom);
 }
@@ -1140,7 +1198,7 @@ function renderHole(fly = true){
     .filter(Boolean).join(' · ') || 'No scorecard for this hole';
   $('#pinGreen').setAttribute('aria-pressed', pinning);
   $('#pinGreen').textContent = pinning ? 'Tap the green…' : pin ? 'Move green pin' : gp ? 'Adjust green' : 'Pin the green';
-  $('#pinHint').textContent = mine ? `From your course map${info.teeColor ? ` (${teeOf(info.teeColor).name} tee)` : ''}: front, middle and back. To change it, use "Map a course".`
+  $('#pinHint').textContent = mine ? `From ${info.oh.provider || 'your course map'}${info.teeColor ? ` (${teeOf(info.teeColor).name} tee)` : ''}: front, middle and back.${info.oh.provider ? '' : ' To change it, use "Map a course".'}`
     : pinning ? `Tap the middle of the green for hole ${n}.`
     : pin ? `Using your green pin for hole ${n}.`
     : info.oh?.est === 'guess' ? `Hole ${n} worked out from the scorecard yardage. If it's the wrong green, tap "Pin the green".`
@@ -1184,10 +1242,12 @@ function renderHole(fly = true){
    outlines for the green, tee box and fairway, and sand/water hazards. */
 const MKEY = 'caddie-voice-maps';                    // copies saved on this device {id: course map}
 let myMaps = (() => { try { return JSON.parse(localStorage.getItem(MKEY)) || {}; } catch { return {}; } })();
-let folderIdx = null, courseMap = null, appMode = 'play', lastSave = null;
+let folderIdx = null, courseMap = null, appMode = 'play', lastSave = null, providerMap = null;
+/* holes to play from: iGolf's map, with any hole you mapped yourself taking its place */
+const playHoles = () => ({ ...(providerMap?.holes || {}), ...(courseMap?.holes || {}) });
 const slug = t => norm(t).replace(/ /g, '-').slice(0, 80) || 'course';
 const r6 = p => [+(+p[0]).toFixed(6), +(+p[1]).toFixed(6)];
-const gmid = h => [(h.front[0] + h.back[0]) / 2, (h.front[1] + h.back[1]) / 2];      // middle of the green
+const gmid = h => h.center || [(h.front[0] + h.back[0]) / 2, (h.front[1] + h.back[1]) / 2];      // middle of the green (iGolf gives its own center)
 /* tee colours, from the back of the hole to the front. Blue, white, gold, red are the usual set; black only on some courses. */
 const TEES = [
   { c:'black', name:'Black', role:'championship', bg:'#1B1B1B', fg:'#FFFFFF', alias:['black', 'championship', 'tips', 'tournament'] },
