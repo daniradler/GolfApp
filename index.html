@@ -152,9 +152,10 @@ input::placeholder{color:var(--mist);opacity:.7}
 .vtx{background:#fff;border:2px solid #04182C;border-radius:50%;box-shadow:0 1px 4px rgba(0,0,0,.5)}
 .vtx.mid{background:rgba(255,255,255,.55);border-color:rgba(4,24,44,.6)}
 .mark-tag{display:flex!important;align-items:center;justify-content:center;border-radius:50%;border:2px solid #04182C;font:700 11px/1 var(--body);color:#04182C}
-/* the tapped spot's yards: off to the side of the dot so the hole stays in view */
-.spot-tag span{position:absolute;left:0;top:0;transform:translate(16px,-50%);white-space:nowrap;background:#000;color:#fff;
-  border:1px solid #fff;border-radius:10px;padding:4px 8px;font:700 13px/1.25 var(--body);text-align:center;box-shadow:0 2px 6px rgba(0,0,0,.4)}
+/* the tapped spot's yards: plain white numbers beside the dot, on whichever side keeps the hole in view */
+.spot-tag span{position:absolute;left:0;top:0;transform:translate(14px,-50%);white-space:nowrap;color:#fff;text-align:left;
+  font:800 15px/1.25 var(--body);text-shadow:0 0 3px #000,0 0 3px #000,0 1px 2px #000}
+.spot-tag.left span{transform:translate(calc(-100% - 14px),-50%);text-align:right}
 .nomap{position:absolute;z-index:1050;left:50%;bottom:calc(200px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);width:min(380px,calc(100% - 24px));background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:10px 14px;display:flex;flex-direction:column;gap:4px;text-align:center}
 .nomap b{font-size:14px!important}.nomap p{font-size:13px!important}
 .nomap b{font-size:16px}
@@ -1065,6 +1066,7 @@ function openMap(k){
       Object.values(baseLayers).forEach(l => l.on('tileload', () => { tilesOk = true; }));
       setBase(baseName);
       map.on('move', updateReadout);
+      map.on('moveend', () => { if (mode === 'round' && spot) drawLive(); });   // re-pick the side for the spot's numbers
       map.on('dragstart', () => { if (mapper) mapper.userMoved = true; });
       map.on('click', e => { if (mode !== 'round') return;
         const p = [e.latlng.lat, e.latlng.lng];
@@ -1195,15 +1197,26 @@ function drawLive(){
     L.polyline(route, { color:'#4FB3FF', weight:4, interactive:false }).addTo(liveLayer);
   }
   if (spot){
-    const line = { color:'#FFD166', weight:3, dashArray:'2 8', lineCap:'round', interactive:false };
+    const line = { color:'#FFFFFF', weight:3, dashArray:'2 8', lineCap:'round', interactive:false };
     if (me && !far) L.polyline([me, spot], line).addTo(liveLayer);
     if (g.mid) L.polyline([spot, g.mid], line).addTo(liveLayer);
-    L.circleMarker(spot, { radius:9, color:'#04182C', weight:3, fillColor:'#FFD166', fillOpacity:1, interactive:false }).addTo(liveLayer);
+    L.circleMarker(spot, { radius:9, color:'#04182C', weight:3, fillColor:'#FFFFFF', fillOpacity:1, interactive:false }).addTo(liveLayer);
     const label = [g.mid && `${yd(spot, g.mid)} to green`, me && `${howFar(me, spot)} from you`].filter(Boolean).join('<br>');
-    if (label) L.marker(spot, { icon:L.divIcon({ className:'spot-tag', html:`<span>${label}</span>`, iconSize:[0,0] }), interactive:false, keyboard:false }).addTo(liveLayer);
+    if (label) L.marker(spot, { icon:L.divIcon({ className:'spot-tag' + (labelLeft(spot, route) ? ' left' : ''), html:`<span>${label}</span>`, iconSize:[0,0] }),
+      interactive:false, keyboard:false }).addTo(liveLayer);
   }
 }
 $('#spotClear').onclick = () => { spot = null; drawLive(); };
+/* put the spot's numbers on the side facing away from the hole (on screen), unless that runs off the edge */
+function labelLeft(pt, route){
+  const p = map.latLngToContainerPoint(pt), w = map.getSize().x;
+  if (p.x < 130) return false;
+  if (p.x > w - 130) return true;
+  const pts = (route || []).map(q => map.latLngToContainerPoint(q));
+  let near = null, best = Infinity;
+  for (let i = 1; i < pts.length; i++){ const c = L.LineUtil.closestPointOnSegment(p, pts[i-1], pts[i]), d = c.distanceTo(p); if (d < best){ best = d; near = c; } }
+  return near ? near.x > p.x : p.x > w / 2;
+}
 
 function renderHole(fly = true){
   const n = hole, info = holeInfo(n), mine = info.oh?.mapped, pin = !mine && (greens[course.id] || {})[n], gp = info.green?.poly;
