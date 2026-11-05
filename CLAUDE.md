@@ -67,9 +67,15 @@ saying something works.
    75% of screen height. ‹ goes back to course list.
 3. **Round**: one hole at a time. Map shows only the current hole's features
    (route line, its green with front/middle/back dots, nearby tee/fairway/
-   bunkers/water). Hole card at bottom: ‹ Hole N › , par · yards (tee) · handicap,
-   **live GPS yardage** to Front / Middle / Back, **Pin the green**. **End round**
-   (top right) returns to overview.
+   bunkers/water). **Hole box at the top** (`#holeTop`): ‹ Hole N › with par ·
+   handicap (the arrows change holes). **Yards-to-green counter** (`#greenCount`,
+   white on see-through black, left under the hole box): you → middle of the
+   green, miles when far. Hole card at bottom: Hole N, yards (tee), **live GPS
+   yardage** to Front / Middle / Back, **Set my location**, **Pin the green**.
+   **End round** (top right) returns to overview.
+   - **Set my location** (stand-in until GPS works on the phone): tap it, then
+     tap the map; that point becomes `me` (`manualMe`, GPS updates ignored while
+     set), stays across holes, cleared by End round. `placing` = waiting for the tap.
    - GPS (`startGPS()` on Start round, `stopGPS()` on End round / back):
      `watchPosition`, blue dot + accuracy circle on the map. Your own green pin
      replaces the mapped green and gives a middle number only. Over 1500 yds
@@ -91,9 +97,9 @@ saying something works.
      +bearing. Don't upgrade to 0.3+ without retesting (released Oct 2026).
    - The total yardage in the top bar and on each tee chip follows the chosen
      tee; when a tee has no total on file, its hole yardages are added up.
-4. Status message ("9 of 18 holes mapped…", built by `refreshStatus()`; holes
-   from your course map are counted first) shows at the start of each round,
-   × hides it for that round only, returns next round. Errors always show.
+4. Status message: the "3 of 18 holes mapped…" text (`refreshStatus()`) is no
+   longer shown; only problems (`important`, e.g. map lookup failed + Retry)
+   show, below the hole box in a round. × hides it.
 5. **Map a course** (mode `'mapping'`, `mapper` state object, `renderMapper()`):
    one hole at a time, starting at the first hole not yet in your course map.
    Steps (bar on the card): **Tee → Front → Back → Hazards → Shapes**. The step

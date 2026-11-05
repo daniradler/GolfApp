@@ -90,6 +90,17 @@ input::placeholder{color:var(--mist);opacity:.7}
 .holeinfo .num{font-family:var(--display);font-weight:800;font-size:34px;line-height:1;letter-spacing:.03em;text-transform:uppercase}
 .holeinfo .meta{font-size:14px;color:var(--mist);font-variant-numeric:tabular-nums}
 .pinrow{display:flex;gap:8px}
+/* round: hole box at the top, and the big yards-to-green counter */
+.holetop{position:absolute;z-index:1100;left:50%;transform:translateX(-50%);top:calc(70px + env(safe-area-inset-top,0px));
+  width:min(440px,calc(100% - 24px));display:flex;align-items:center;gap:8px;background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:6px}
+.holetop .step{width:44px;height:44px}
+.holetop .num{font-size:26px}
+.greencount{position:absolute;z-index:1100;left:max(12px,env(safe-area-inset-left,0px));top:calc(140px + env(safe-area-inset-top,0px));
+  background:rgba(0,0,0,.55);color:#fff;border-radius:14px;padding:6px 14px 8px;text-align:center;pointer-events:none}
+.greencount b{display:block;font-family:var(--display);font-weight:800;font-size:46px;line-height:1;font-variant-numeric:tabular-nums}
+.greencount small{display:block;font-size:11px;letter-spacing:.1em;text-transform:uppercase;font-weight:600;color:#fff}
+.map-screen.round .layer-btn{top:calc(140px + env(safe-area-inset-top,0px))}
+.map-screen.round .osm-status{top:calc(140px + env(safe-area-inset-top,0px))}
 .pinbtn{flex:1;background:var(--field);color:var(--ink);border:1px solid var(--line);border-radius:12px;padding:12px;font-weight:600;font-size:15px}
 .pinbtn[aria-pressed="true"]{background:var(--play);color:var(--play-ink);border-color:var(--play)}
 .hint{font-size:13px;color:var(--mist);margin:0;text-align:center}
@@ -270,13 +281,19 @@ input::placeholder{color:var(--mist);opacity:.7}
   <div class="crosshair" id="crosshair" hidden aria-hidden="true"><i></i><span id="xhairRead" hidden></span></div>
   <div class="osm-status" id="osmStatus" role="status" hidden><span id="osmText"></span><button id="osmRetry" hidden>Retry</button><button class="x" id="osmClose" aria-label="Hide this message">×</button></div>
   <button class="layer-btn" id="layerBtn" aria-label="Switch map style">Map</button>
+  <!-- round: which hole, at the top -->
+  <div class="holetop" id="holeTop" hidden>
+    <button class="step" id="holePrev" aria-label="Previous hole">‹</button>
+    <div class="holeinfo"><div class="num" id="holeTopNum">Hole 1</div><div class="meta" id="holeTopMeta"></div></div>
+    <button class="step" id="holeNext" aria-label="Next hole">›</button>
+  </div>
+  <!-- round: yards from you to the middle of the green -->
+  <div class="greencount" id="greenCount" hidden aria-live="polite"><b id="greenYds">–</b><small id="greenLbl">yds to green</small></div>
   <div class="tees" id="teeRow" role="group" aria-label="Tees" hidden></div>
   <button class="play start-round" id="startRound">Start round</button>
   <div class="holecard" id="holeCard" hidden><div class="holecard-in">
     <div class="holerow">
-      <button class="step" id="holePrev" aria-label="Previous hole">‹</button>
       <div class="holeinfo"><div class="num" id="holeNum">Hole 1</div><div class="meta" id="holeMeta"></div></div>
-      <button class="step" id="holeNext" aria-label="Next hole">›</button>
     </div>
     <div class="yards" id="yards" aria-live="polite">
       <div><small>Front</small><b id="ydF">–</b></div>
@@ -290,6 +307,7 @@ input::placeholder{color:var(--mist);opacity:.7}
       <button class="x" id="spotClear" aria-label="Clear the spot">×</button>
     </div>
     <div class="pinrow">
+      <button class="pinbtn" id="setMe" aria-pressed="false">Set my location</button>
       <button class="pinbtn" id="pinGreen" aria-pressed="false">Pin the green</button>
     </div>
     <p class="hint" id="pinHint">Tap "Pin the green," then tap the green on the map. It's saved for every round.</p>
@@ -776,7 +794,7 @@ function readCache(id){ try { const c = JSON.parse(localStorage.getItem(OKEY + i
 function writeCache(id, F){ try { localStorage.setItem(OKEY + id, JSON.stringify({ ts: Date.now(), F })); } catch {} }
 
 /* hide preferences, remembered on this phone */
-let statusDismissed = false, mode = 'overview', lastStatus = null;
+let mode = 'overview', lastStatus = null;
 const HKEY = 'caddie-voice-hidden';
 let hidden = (() => { try { return JSON.parse(localStorage.getItem(HKEY)) || {}; } catch { return {}; } })();
 const saveHidden = () => { try { localStorage.setItem(HKEY, JSON.stringify(hidden)); } catch {} };
@@ -787,7 +805,7 @@ function setStatus(text, btn, hideAfter, important){
 function showStatus(){
   clearTimeout(statusT);
   const st = lastStatus;
-  if (!st || (mode !== 'round' && !st.important) || (!st.important && statusDismissed)) { $('#osmStatus').hidden = true; return; }
+  if (!st || !st.important) { $('#osmStatus').hidden = true; return; }      // only problems; the hole box at the top replaces "3 of 18 holes…"
   $('#osmText').textContent = st.text; $('#osmStatus').hidden = false;
   $('#osmRetry').hidden = !st.btn; if (st.btn) $('#osmRetry').textContent = st.btn;
 }
@@ -1040,7 +1058,7 @@ $('#layerBtn').onclick = () => setBase(baseName === 'sat' ? 'map' : 'sat');
 
 /* ---------- screens ---------- */
 function openMap(k){
-  course = k; hole = 1; pinning = false; lastStatus = null; statusDismissed = false;
+  course = k; hole = 1; pinning = false; lastStatus = null;
   $('#mapCourse').textContent = k.name; $('#mapPlace').textContent = k.place;
   $('#mapScreen').hidden = false;
   if (window.L){
@@ -1060,6 +1078,7 @@ function openMap(k){
       map.on('dragstart', () => { if (mapper) mapper.userMoved = true; });
       map.on('click', e => { if (mode !== 'round') return;
         const p = [e.latlng.lat, e.latlng.lng];
+        if (placing){ placing = false; me = p; meAcc = 0; manualMe = true; return renderHole(false); }   // you picked where you are
         if (!pinning){ spot = p; return drawLive(); }       // any other tap marks a spot to measure
         (greens[course.id] ||= {})[hole] = p; saveGreens();
         pinning = false; renderHole(); });
@@ -1077,7 +1096,9 @@ function openMap(k){
 }
 function setMode(m){
   mode = m; const r = m === 'round', mp = m === 'mapping';
-  $('#holeCard').hidden = !r; $('#startRound').hidden = r || mp; $('#endRound').hidden = !r; $('#mapBack').hidden = r;
+  $('#holeCard').hidden = $('#holeTop').hidden = $('#greenCount').hidden = !r; $('#mapScreen').classList.toggle('round', r);
+  if (!r) placing = false;
+  $('#startRound').hidden = r || mp; $('#endRound').hidden = !r; $('#mapBack').hidden = r;
   $('#mapCard').hidden = !mp; $('#mapDone').hidden = !mp; $('#crosshair').hidden = !mp;
   if (!mp){ mapLayer?.remove(); editLayer?.remove(); mapLayer = editLayer = null; }
   if (!r) pinning = false;
@@ -1125,17 +1146,19 @@ function fitCourse(){
   if (pts.length) map.flyToBounds(L.latLngBounds(pts), { paddingTopLeft:[24,96], paddingBottomRight:[24, Math.round(innerHeight*0.32)], duration:.6 });
   else map.setView(course.center, course.zoom);
 }
-function startRound(){ hole = 1; spot = null; statusDismissed = false; startGPS(); setMode('round'); }
-function endRound(){ statusDismissed = false; stopGPS(); setMode('overview'); }
+function startRound(){ hole = 1; spot = null; startGPS(); setMode('round'); }
+function endRound(){ stopGPS(); setMode('overview'); }
 
 /* ---------- live GPS: yards from you to the green, and to a spot you tap ---------- */
-let me = null, meAcc = 0, gpsWatch = null, gpsErr = null, spot = null, liveLayer;
+/* until GPS works on the phone, you can tap "Set my location" and then tap the map; that spot stands in for GPS */
+let me = null, meAcc = 0, gpsWatch = null, gpsErr = null, spot = null, liveLayer, manualMe = false, placing = false;
 function startGPS(){
   if (gpsWatch != null) return;
   if (!navigator.geolocation){ gpsErr = 'none'; return; }
   gpsErr = null;
   gpsWatch = navigator.geolocation.watchPosition(
-    p => { me = [p.coords.latitude, p.coords.longitude]; meAcc = p.coords.accuracy || 0; gpsErr = null; drawLive();
+    p => { gpsErr = null; if (manualMe) return;          // the spot you picked wins over GPS for now
+      me = [p.coords.latitude, p.coords.longitude]; meAcc = p.coords.accuracy || 0; drawLive();
       /* mapping: offer "I'm on the tee" once you're at the course */
       const on = !!course && distM(me, course.center) < 3000;
       if (mode === 'mapping' && mapper?.step === 'tee' && mapper.onCourse !== on){ mapper.onCourse = on; renderMapperButtons(); } },
@@ -1144,7 +1167,7 @@ function startGPS(){
 }
 function stopGPS(){
   if (gpsWatch != null) navigator.geolocation.clearWatch(gpsWatch);
-  gpsWatch = null; me = null; spot = null; liveLayer?.remove(); liveLayer = null;
+  gpsWatch = null; me = null; manualMe = placing = false; spot = null; liveLayer?.remove(); liveLayer = null;
 }
 const yd = (a, b) => Math.round(distM(a, b) * M2YD);
 /* yards up close; miles when you're nowhere near (e.g. checking a course from home) */
@@ -1160,8 +1183,15 @@ function drawLive(){
   const g = greenTargets(), far = me && g.mid && yd(me, g.mid) > 1500;
   const show = (id, pt) => { $(id).textContent = me && pt && !far ? yd(me, pt) : '–'; };
   show('#ydF', g.front); show('#ydM', g.mid); show('#ydB', g.back);
+  $('#greenYds').textContent = me && g.mid ? howFar(me, g.mid).replace(' mi', '') : '–';
+  $('#greenLbl').textContent = me && g.mid && far ? 'miles to green' : 'yds to green';
+  $('#setMe').setAttribute('aria-pressed', placing);
+  $('#setMe').textContent = placing ? 'Tap where you are…' : manualMe ? 'Move my location' : 'Set my location';
   $('#gpsNote').textContent =
-      gpsErr === 'denied' ? 'Location is turned off for this app. Allow location to see yards from where you are.'
+      placing ? 'Tap the map where you\'re standing.'
+    : manualMe && !g.mid ? 'This green isn\'t on the map yet. Tap "Pin the green" to set it.'
+    : manualMe ? 'Yards from the spot you picked. Tap "Move my location" to change it.'
+    : gpsErr === 'denied' ? 'Location is turned off for this app. Allow location to see yards from where you are.'
     : gpsErr === 'none' ? "This browser can't share your location."
     : !me ? (gpsErr === 'nofix' ? 'Still looking for a GPS signal…' : 'Finding your location…')
     : !g.mid ? 'This green isn\'t on the map yet. Tap "Pin the green" to set it.'
@@ -1193,9 +1223,9 @@ $('#spotClear').onclick = () => { spot = null; drawLive(); };
 function renderHole(fly = true){
   const n = hole, info = holeInfo(n), mine = info.oh?.mapped, pin = !mine && (greens[course.id] || {})[n], gp = info.green?.poly;
   $('#pinGreen').hidden = !!mine;                    // your own map has the green; change it in Map a course
-  $('#holeNum').textContent = 'Hole ' + n;
-  $('#holeMeta').textContent = [info.par && `Par ${info.par}`, info.yds && `${info.yds} yds` + (course.tee && course.tees?.length > 1 ? ` (${course.tee})` : ''), info.hcp && `Handicap ${info.hcp}`]
-    .filter(Boolean).join(' · ') || 'No scorecard for this hole';
+  $('#holeNum').textContent = $('#holeTopNum').textContent = 'Hole ' + n;
+  $('#holeTopMeta').textContent = [info.par && `Par ${info.par}`, info.hcp && `Handicap ${info.hcp}`].filter(Boolean).join(' · ') || 'No scorecard for this hole';
+  $('#holeMeta').textContent = info.yds ? `${info.yds} yds` + (course.tee && course.tees?.length > 1 ? ` (${course.tee})` : '') : '';
   $('#pinGreen').setAttribute('aria-pressed', pinning);
   $('#pinGreen').textContent = pinning ? 'Tap the green…' : pin ? 'Move green pin' : gp ? 'Adjust green' : 'Pin the green';
   $('#pinHint').textContent = mine ? `From ${info.oh.provider || 'your course map'}${info.teeColor ? ` (${teeOf(info.teeColor).name} tee)` : ''}: front, middle and back.${info.oh.provider ? '' : ' To change it, use "Map a course".'}`
@@ -1231,7 +1261,7 @@ function renderHole(fly = true){
     setBearing(tee && mid ? bearingUp(tee, mid) : 0);
     if (tee && tee === me) pts.push(me);            // keep you on screen too
     /* keep the green clear of the top bar and the status message, and the tee clear of the hole card */
-    const top = Math.max(110, ...['.topbar', '#osmStatus'].map(s => $(s).hidden ? 0 : $(s).getBoundingClientRect().bottom + 24));
+    const top = Math.max(110, ...['.topbar', '#holeTop', '#osmStatus'].map(s => $(s).hidden ? 0 : $(s).getBoundingClientRect().bottom + 24));
     if (pts.length > 1) flyToTurned(pts, { l:30, r:30, t:top, b:Math.max(220, $('#holeCard').offsetHeight + 36) }, 18);
     else if (pts.length) map.flyTo(pts[0], 18, { duration:.6 });
     else fitCourse();
@@ -1702,9 +1732,10 @@ function updateReadout(){
 
 $('#holePrev').onclick = () => { const c = holeCount(); hole = hole > 1 ? hole-1 : c; pinning = false; spot = null; renderHole(); };
 $('#holeNext').onclick = () => { const c = holeCount(); hole = hole < c ? hole+1 : 1; pinning = false; spot = null; renderHole(); };
-$('#pinGreen').onclick = () => { pinning = !pinning; renderHole(false); };
+$('#pinGreen').onclick = () => { pinning = !pinning; placing = false; renderHole(false); };
+$('#setMe').onclick = () => { placing = !placing; pinning = false; renderHole(false); };
 $('#osmRetry').onclick = () => course && loadOSM(course, true);
-$('#osmClose').onclick = () => { $('#osmStatus').hidden = true; statusDismissed = true; };   // hidden for the rest of this round
+$('#osmClose').onclick = () => { $('#osmStatus').hidden = true; };
 $('#mapPrev').onclick = () => mapper && mapperStep(-1);
 $('#mapNext').onclick = () => mapper && mapperStep(1);
 $('#mapDone').onclick = finishMapping;
