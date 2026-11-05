@@ -75,10 +75,10 @@ saying something works.
    label on it. The tapped spot is a white dot with white dotted lines; its yards
    are plain white numbers (text shadow, no box) beside it, on the side facing
    away from the blue route on screen (`labelLeft()`; flips near the screen edge,
-   re-picked on `moveend`). The card's spot box is white on black.
+   re-picked on `moveend`). Tap the spot again (within 24 px) to clear it; there
+   is no spot box in the card any more.
    **Compact bottom card** (`.holecard.compact`): Hole N, **Set my location**,
-   **Pin the green** (hidden on mapped holes), and the yellow spot box when a spot
-   is set. No front/middle/back numbers and no hint text any more.
+   **Pin the green** (hidden on mapped holes). No front/middle/back numbers and no hint text any more.
    **End round** (top right) returns to overview.
    - **Set my location** (stand-in until GPS works on the phone): tap it, then
      tap the map; that point becomes `me` (`manualMe`, GPS updates ignored while

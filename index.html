@@ -107,14 +107,8 @@ input::placeholder{color:var(--mist);opacity:.7}
 /* live yardage from the player's GPS position */
 .yards{display:grid;grid-template-columns:1fr 1.3fr 1fr;gap:6px;text-align:center}
 .yards div{background:var(--field);border:1px solid var(--line);border-radius:12px;padding:6px 4px}
-.spot small{display:block;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--mist);font-weight:600}
-.spot b{display:block;font-family:var(--display);font-weight:800;font-size:30px;line-height:1.05;font-variant-numeric:tabular-nums}
 .yards .mid b{font-size:40px;color:var(--play)}
 /* a spot tapped on the map */
-.spot{display:flex;align-items:center;gap:6px;border:1px solid #fff;background:#000;border-radius:12px;padding:6px 4px 6px 8px;text-align:center}
-.spot div{flex:1}
-.spot b{font-size:26px;color:#fff}
-.spot .x{flex:0 0 auto;width:36px;height:36px;border-radius:50%;background:transparent;color:var(--mist);font-size:24px;line-height:1}
 /* Map a course */
 .crosshair{position:absolute;z-index:1050;left:50%;top:50%;width:0;height:0;pointer-events:none}
 /* which tee you're marking */
@@ -296,11 +290,6 @@ input::placeholder{color:var(--mist);opacity:.7}
       <div class="num" id="holeNum">Hole 1</div>
       <button class="pinbtn" id="setMe" aria-pressed="false">Set my location</button>
       <button class="pinbtn" id="pinGreen" aria-pressed="false">Pin the green</button>
-    </div>
-    <div class="spot" id="spotBox" hidden>
-      <div><small>Spot to green</small><b id="spotGreen">–</b></div>
-      <div><small>You to spot</small><b id="spotMe">–</b></div>
-      <button class="x" id="spotClear" aria-label="Clear the spot">×</button>
     </div>
   </div></div>
   <div class="holecard mapcard" id="mapCard" hidden><div class="holecard-in">
@@ -1071,7 +1060,8 @@ function openMap(k){
       map.on('click', e => { if (mode !== 'round') return;
         const p = [e.latlng.lat, e.latlng.lng];
         if (placing){ placing = false; me = p; meAcc = 0; manualMe = true; return renderHole(false); }   // you picked where you are
-        if (!pinning){ spot = p; return drawLive(); }       // any other tap marks a spot to measure
+        if (!pinning){                                      // any other tap marks a spot to measure; tapping the spot again clears it
+          spot = spot && map.latLngToContainerPoint(spot).distanceTo(e.containerPoint) < 24 ? null : p; return drawLive(); }
         (greens[course.id] ||= {})[hole] = p; saveGreens();
         pinning = false; renderHole(); });
     } else map.setView(k.center, k.zoom);
@@ -1175,11 +1165,6 @@ function drawLive(){
   const g = greenTargets(), far = me && g.mid && yd(me, g.mid) > 1500;
   $('#setMe').setAttribute('aria-pressed', placing);
   $('#setMe').textContent = placing ? 'Tap where you are…' : manualMe ? 'Move my location' : 'Set my location';
-  $('#spotBox').hidden = !spot;
-  if (spot){
-    $('#spotGreen').textContent = g.mid ? yd(spot, g.mid) : '–';
-    $('#spotMe').textContent = me ? howFar(me, spot) : '–';
-  }
   if (!map) return;
   liveLayer?.remove(); liveLayer = L.layerGroup().addTo(map);
   if (me){
@@ -1206,7 +1191,6 @@ function drawLive(){
       interactive:false, keyboard:false }).addTo(liveLayer);
   }
 }
-$('#spotClear').onclick = () => { spot = null; drawLive(); };
 /* put the spot's numbers on the side facing away from the hole (on screen), unless that runs off the edge */
 function labelLeft(pt, route){
   const p = map.latLngToContainerPoint(pt), w = map.getSize().x;
