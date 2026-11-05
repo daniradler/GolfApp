@@ -99,6 +99,17 @@ input::placeholder{color:var(--mist);opacity:.7}
 .holecard.compact .pinrow{align-items:center}
 .holecard.compact .num{flex:0 0 auto;font-family:var(--display);font-weight:800;font-size:22px;letter-spacing:.03em;text-transform:uppercase;padding:0 4px}
 .holecard.compact .pinbtn{padding:9px 8px;font-size:14px}
+.club{position:absolute;z-index:1150;right:max(12px,env(safe-area-inset-right,0px));bottom:100px;display:flex;flex-direction:column;align-items:flex-end;gap:6px}
+.clubbtn{background:rgba(0,0,0,.6);color:#fff;border:1px solid rgba(255,255,255,.7);border-radius:14px;padding:6px 12px;text-align:center;min-width:92px}
+.clubbtn small{display:block;font-size:10px;letter-spacing:.1em;text-transform:uppercase;font-weight:600;opacity:.8}
+.clubbtn b{display:block;font-family:var(--display);font-weight:800;font-size:22px;line-height:1.05;text-transform:uppercase}
+.clubbtn span{display:block;font-size:12px;font-variant-numeric:tabular-nums;opacity:.9}
+.clubbtn b::after{content:" ▾";font-size:14px}
+.clubmenu{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:4px;max-height:min(360px,50vh);overflow-y:auto;min-width:190px;box-shadow:0 6px 20px rgba(0,0,0,.5)}
+.clubmenu button{display:flex;justify-content:space-between;gap:12px;width:100%;background:transparent;color:var(--ink);border:0;border-radius:10px;padding:10px 12px;font-size:15px;font-weight:600;text-align:left}
+.clubmenu button span{color:var(--mist);font-weight:500;font-variant-numeric:tabular-nums}
+.clubmenu button[aria-selected="true"]{background:var(--play);color:var(--play-ink)}
+.clubmenu button[aria-selected="true"] span{color:var(--play-ink)}
 .map-screen.round .layer-btn{top:calc(140px + env(safe-area-inset-top,0px))}
 .map-screen.round .osm-status{top:calc(140px + env(safe-area-inset-top,0px))}
 .pinbtn{flex:1;background:var(--field);color:var(--ink);border:1px solid var(--line);border-radius:12px;padding:12px;font-weight:600;font-size:15px}
@@ -285,6 +296,11 @@ input::placeholder{color:var(--mist);opacity:.7}
   </div>
   <div class="tees" id="teeRow" role="group" aria-label="Tees" hidden></div>
   <button class="play start-round" id="startRound">Start round</button>
+  <!-- round: which club for the yards you have left; tap to pick another -->
+  <div class="club" id="clubBox" hidden>
+    <div class="clubmenu" id="clubMenu" role="listbox" aria-label="Clubs" hidden></div>
+    <button class="clubbtn" id="clubBtn" aria-haspopup="listbox" aria-expanded="false"><small id="clubTag">Suggested</small><b id="clubName">–</b><span id="clubYds"></span></button>
+  </div>
   <div class="holecard compact" id="holeCard" hidden><div class="holecard-in">
     <div class="pinrow">
       <div class="num" id="holeNum">Hole 1</div>
@@ -1078,7 +1094,7 @@ function openMap(k){
 }
 function setMode(m){
   mode = m; const r = m === 'round', mp = m === 'mapping';
-  $('#holeCard').hidden = $('#holeTop').hidden = !r; $('#mapScreen').classList.toggle('round', r);
+  $('#holeCard').hidden = $('#holeTop').hidden = !r; if (!r){ $('#clubBox').hidden = true; clubMenu(false); } $('#mapScreen').classList.toggle('round', r);
   if (!r) placing = false;
   $('#startRound').hidden = r || mp; $('#endRound').hidden = !r; $('#mapBack').hidden = r;
   $('#mapCard').hidden = !mp; $('#mapDone').hidden = !mp; $('#crosshair').hidden = !mp;
@@ -1129,6 +1145,42 @@ function fitCourse(){
   else map.setView(course.center, course.zoom);
 }
 function startRound(){ hole = 1; spot = null; startGPS(); meToTee(); setMode('round'); }
+/* ---------- club suggestion: the shortest club that gets there ----------
+   Typical carry distances for an average golfer; later these can be your own numbers. */
+const CLUBS = [['Driver', 230], ['3 Wood', 215], ['5 Wood', 200], ['Hybrid', 190], ['4 Iron', 180], ['5 Iron', 170], ['6 Iron', 160],
+  ['7 Iron', 150], ['8 Iron', 140], ['9 Iron', 130], ['P Wedge', 120], ['G Wedge', 105], ['S Wedge', 90], ['L Wedge', 70], ['Putter', 0]];
+let clubPick = null, clubPickAt = null, clubNow = null;   // the club you chose, where you were when you chose it, and what's shown
+function suggestClub(d, onGreen){
+  if (onGreen) return 'Putter';
+  const reach = CLUBS.filter(([, y]) => y && y >= d - 5);            // a few yards short is fine
+  return (reach.length ? reach[reach.length - 1] : CLUBS[0])[0];
+}
+function showClub(d, onGreen){
+  const box = $('#clubBox');
+  if (d == null){ box.hidden = true; clubMenu(false); return; }
+  if (clubPick && (!clubPickAt || !me || distM(clubPickAt, me) > 14)) clubPick = null;   // you moved: back to the suggestion
+  const sug = suggestClub(d, onGreen), name = clubPick || sug, y = CLUBS.find(c => c[0] === name)[1];
+  clubNow = { name, sug, d };
+  $('#clubTag').textContent = clubPick && clubPick !== sug ? 'Your pick' : 'Suggested';
+  $('#clubName').textContent = name;
+  $('#clubYds').textContent = y ? `${y} yds · ${d} to go` : `${d} to go`;
+  box.style.bottom = ($('#holeCard').offsetHeight + 8) + 'px';
+  box.hidden = false;
+  if (!$('#clubMenu').hidden) clubMenu(true);
+}
+function clubMenu(open){
+  const menu = $('#clubMenu'); menu.hidden = !open; $('#clubBtn').setAttribute('aria-expanded', open);
+  if (!open || !clubNow) return;
+  menu.innerHTML = '';
+  CLUBS.forEach(([n, y]) => { const b = document.createElement('button'); b.setAttribute('role', 'option');
+    b.setAttribute('aria-selected', n === clubNow.name);
+    b.innerHTML = `${esc(n)}${n === clubNow.sug ? ' ★' : ''}<span>${y ? y + ' yds' : 'on the green'}</span>`;
+    b.onclick = e => { e.stopPropagation(); clubPick = n === clubNow.sug ? null : n; clubPickAt = me; clubMenu(false); drawLive(); };
+    menu.appendChild(b); });
+  menu.querySelector('[aria-selected="true"]')?.scrollIntoView({ block:'nearest' });
+}
+$('#clubBtn').onclick = e => { e.stopPropagation(); clubMenu($('#clubMenu').hidden); };
+document.addEventListener('click', e => { if (!$('#clubMenu').hidden && !e.target.closest('#clubBox')) clubMenu(false); });
 /* a new hole starts you on its tee (the one for the tee color you're playing), until real GPS takes over */
 function meToTee(){
   if (me && !manualMe) return;
@@ -1188,6 +1240,7 @@ function drawLive(){
   if (route?.length > 1){
     L.polyline(route, { color:'#4FB3FF', weight:4, interactive:false }).addTo(liveLayer);
   }
+  showClub(me && g.mid && !far ? yd(me, g.mid) : null, !!(me && info.green?.poly && inPoly(me, info.green.poly)));
   if (spot){
     const line = { color:'#FFFFFF', weight:3, dashArray:'2 8', lineCap:'round', interactive:false };
     if (me && !far) L.polyline([me, spot], line).addTo(liveLayer);
