@@ -95,10 +95,14 @@ input::placeholder{color:var(--mist);opacity:.7}
   width:min(440px,calc(100% - 24px));display:flex;align-items:center;gap:8px;background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:6px}
 .holetop .step{width:44px;height:44px}
 .holetop .num{font-size:26px}
-.greencount{position:absolute;z-index:1100;left:max(12px,env(safe-area-inset-left,0px));top:calc(140px + env(safe-area-inset-top,0px));
-  background:rgba(0,0,0,.55);color:#fff;border-radius:14px;padding:6px 14px 8px;text-align:center;pointer-events:none}
-.greencount b{display:block;font-family:var(--display);font-weight:800;font-size:46px;line-height:1;font-variant-numeric:tabular-nums}
-.greencount small{display:block;font-size:11px;letter-spacing:.1em;text-transform:uppercase;font-weight:600;color:#fff}
+.holecard.compact .holecard-in{padding:8px;gap:6px}
+.holecard.compact .pinrow{align-items:center}
+.holecard.compact .num{flex:0 0 auto;font-family:var(--display);font-weight:800;font-size:22px;letter-spacing:.03em;text-transform:uppercase;padding:0 4px}
+.holecard.compact .pinbtn{padding:9px 8px;font-size:14px}
+/* yards from you (or the tee) to the green, sitting on the blue route line */
+.route-tag span{position:absolute;left:0;top:0;transform:translate(-50%,-50%);white-space:nowrap;background:rgba(0,0,0,.6);color:#fff;
+  border-radius:10px;padding:3px 8px;font:800 20px/1.1 var(--display);font-variant-numeric:tabular-nums}
+.route-tag small{font:600 11px var(--body);margin-left:3px}
 .map-screen.round .layer-btn{top:calc(140px + env(safe-area-inset-top,0px))}
 .map-screen.round .osm-status{top:calc(140px + env(safe-area-inset-top,0px))}
 .pinbtn{flex:1;background:var(--field);color:var(--ink);border:1px solid var(--line);border-radius:12px;padding:12px;font-weight:600;font-size:15px}
@@ -107,8 +111,8 @@ input::placeholder{color:var(--mist);opacity:.7}
 /* live yardage from the player's GPS position */
 .yards{display:grid;grid-template-columns:1fr 1.3fr 1fr;gap:6px;text-align:center}
 .yards div{background:var(--field);border:1px solid var(--line);border-radius:12px;padding:6px 4px}
-.yards small,.spot small{display:block;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--mist);font-weight:600}
-.yards b,.spot b{display:block;font-family:var(--display);font-weight:800;font-size:30px;line-height:1.05;font-variant-numeric:tabular-nums}
+.spot small{display:block;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--mist);font-weight:600}
+.spot b{display:block;font-family:var(--display);font-weight:800;font-size:30px;line-height:1.05;font-variant-numeric:tabular-nums}
 .yards .mid b{font-size:40px;color:var(--play)}
 /* a spot tapped on the map */
 .spot{display:flex;align-items:center;gap:6px;border:1px solid var(--spot);background:rgba(255,209,102,.1);border-radius:12px;padding:6px 4px 6px 8px;text-align:center}
@@ -287,30 +291,19 @@ input::placeholder{color:var(--mist);opacity:.7}
     <div class="holeinfo"><div class="num" id="holeTopNum">Hole 1</div><div class="meta" id="holeTopMeta"></div></div>
     <button class="step" id="holeNext" aria-label="Next hole">›</button>
   </div>
-  <!-- round: yards from you to the middle of the green -->
-  <div class="greencount" id="greenCount" hidden aria-live="polite"><b id="greenYds">–</b><small id="greenLbl">yds to green</small></div>
   <div class="tees" id="teeRow" role="group" aria-label="Tees" hidden></div>
   <button class="play start-round" id="startRound">Start round</button>
-  <div class="holecard" id="holeCard" hidden><div class="holecard-in">
-    <div class="holerow">
-      <div class="holeinfo"><div class="num" id="holeNum">Hole 1</div><div class="meta" id="holeMeta"></div></div>
+  <div class="holecard compact" id="holeCard" hidden><div class="holecard-in">
+    <div class="pinrow">
+      <div class="num" id="holeNum">Hole 1</div>
+      <button class="pinbtn" id="setMe" aria-pressed="false">Set my location</button>
+      <button class="pinbtn" id="pinGreen" aria-pressed="false">Pin the green</button>
     </div>
-    <div class="yards" id="yards" aria-live="polite">
-      <div><small>Front</small><b id="ydF">–</b></div>
-      <div class="mid"><small>Middle</small><b id="ydM">–</b></div>
-      <div><small>Back</small><b id="ydB">–</b></div>
-    </div>
-    <p class="hint" id="gpsNote">Finding your location…</p>
     <div class="spot" id="spotBox" hidden>
       <div><small>Spot to green</small><b id="spotGreen">–</b></div>
       <div><small>You to spot</small><b id="spotMe">–</b></div>
       <button class="x" id="spotClear" aria-label="Clear the spot">×</button>
     </div>
-    <div class="pinrow">
-      <button class="pinbtn" id="setMe" aria-pressed="false">Set my location</button>
-      <button class="pinbtn" id="pinGreen" aria-pressed="false">Pin the green</button>
-    </div>
-    <p class="hint" id="pinHint">Tap "Pin the green," then tap the green on the map. It's saved for every round.</p>
   </div></div>
   <div class="holecard mapcard" id="mapCard" hidden><div class="holecard-in">
     <div class="holerow">
@@ -1096,7 +1089,7 @@ function openMap(k){
 }
 function setMode(m){
   mode = m; const r = m === 'round', mp = m === 'mapping';
-  $('#holeCard').hidden = $('#holeTop').hidden = $('#greenCount').hidden = !r; $('#mapScreen').classList.toggle('round', r);
+  $('#holeCard').hidden = $('#holeTop').hidden = !r; $('#mapScreen').classList.toggle('round', r);
   if (!r) placing = false;
   $('#startRound').hidden = r || mp; $('#endRound').hidden = !r; $('#mapBack').hidden = r;
   $('#mapCard').hidden = !mp; $('#mapDone').hidden = !mp; $('#crosshair').hidden = !mp;
@@ -1181,24 +1174,9 @@ function greenTargets(){
 function drawLive(){
   if (mode !== 'round' || !course) return;
   const g = greenTargets(), far = me && g.mid && yd(me, g.mid) > 1500;
-  const show = (id, pt) => { $(id).textContent = me && pt && !far ? yd(me, pt) : '–'; };
-  show('#ydF', g.front); show('#ydM', g.mid); show('#ydB', g.back);
-  $('#greenYds').textContent = me && g.mid ? howFar(me, g.mid).replace(' mi', '') : '–';
-  $('#greenLbl').textContent = me && g.mid && far ? 'miles to green' : 'yds to green';
   $('#setMe').setAttribute('aria-pressed', placing);
   $('#setMe').textContent = placing ? 'Tap where you are…' : manualMe ? 'Move my location' : 'Set my location';
-  $('#gpsNote').textContent =
-      placing ? 'Tap the map where you\'re standing.'
-    : manualMe && !g.mid ? 'This green isn\'t on the map yet. Tap "Pin the green" to set it.'
-    : manualMe ? 'Yards from the spot you picked. Tap "Move my location" to change it.'
-    : gpsErr === 'denied' ? 'Location is turned off for this app. Allow location to see yards from where you are.'
-    : gpsErr === 'none' ? "This browser can't share your location."
-    : !me ? (gpsErr === 'nofix' ? 'Still looking for a GPS signal…' : 'Finding your location…')
-    : !g.mid ? 'This green isn\'t on the map yet. Tap "Pin the green" to set it.'
-    : far ? `You're ${(distM(me, g.mid) / 1609.34).toFixed(1)} miles from this green. Yards show when you're on the course.`
-    : `Yards from where you're standing${meAcc > 15 ? ` · GPS within ${Math.round(meAcc * M2YD)} yds` : ''}. Tap the map to measure to a spot.`;
   $('#spotBox').hidden = !spot;
-  $('#pinHint').hidden = !!spot && !pinning;          // keeps the card short so it covers less of the hole
   if (spot){
     $('#spotGreen').textContent = g.mid ? yd(spot, g.mid) : '–';
     $('#spotMe').textContent = me ? howFar(me, spot) : '–';
@@ -1208,6 +1186,19 @@ function drawLive(){
   if (me){
     if (meAcc > 15) L.circle(me, { radius:meAcc, color:'#4FB3FF', weight:1, fillOpacity:.12, interactive:false }).addTo(liveLayer);
     L.circleMarker(me, { radius:8, color:'#FFFFFF', weight:3, fillColor:'#1E88FF', fillOpacity:1, interactive:false }).addTo(liveLayer);
+  }
+  /* the blue route: from you (when you're on the hole) to the green, else the whole hole; yards sit on it */
+  const info = holeInfo(hole), hl = info.oh?.line;
+  let route = hl ? [...hl.slice(0, -1), g.mid || hl[hl.length - 1]] : null;
+  if (me && g.mid && !far){
+    const ahead = (hl || []).slice(1, -1).filter(p => distM(p, g.mid) < distM(me, g.mid) && distM(p, me) > 30);   // bends still in front of you
+    route = [me, ...ahead, g.mid];
+  }
+  if (route?.length > 1){
+    L.polyline(route, { color:'#4FB3FF', weight:4, interactive:false }).addTo(liveLayer);
+    const yds = me && g.mid && !far ? yd(me, g.mid) : lineYds(route);
+    L.marker(alongLine(route, .5), { icon:L.divIcon({ className:'route-tag', html:`<span>${yds}<small>yds</small></span>`, iconSize:[0,0] }),
+      interactive:false, keyboard:false }).addTo(liveLayer);
   }
   if (spot){
     const line = { color:'#FFD166', weight:3, dashArray:'2 8', lineCap:'round', interactive:false };
@@ -1219,25 +1210,23 @@ function drawLive(){
   }
 }
 $('#spotClear').onclick = () => { spot = null; drawLive(); };
+/* the point a fraction of the way along a line (by distance) */
+function alongLine(l, f){
+  let left = lineLen(l) * f;
+  for (let i = 1; i < l.length; i++){ const d = distM(l[i-1], l[i]);
+    if (left <= d){ const t = d ? left / d : 0; return [l[i-1][0] + (l[i][0] - l[i-1][0]) * t, l[i-1][1] + (l[i][1] - l[i-1][1]) * t]; }
+    left -= d; }
+  return l[l.length - 1];
+}
 
 function renderHole(fly = true){
   const n = hole, info = holeInfo(n), mine = info.oh?.mapped, pin = !mine && (greens[course.id] || {})[n], gp = info.green?.poly;
   $('#pinGreen').hidden = !!mine;                    // your own map has the green; change it in Map a course
   $('#holeNum').textContent = $('#holeTopNum').textContent = 'Hole ' + n;
-  $('#holeTopMeta').textContent = [info.par && `Par ${info.par}`, info.hcp && `Handicap ${info.hcp}`].filter(Boolean).join(' · ') || 'No scorecard for this hole';
-  $('#holeMeta').textContent = info.yds ? `${info.yds} yds` + (course.tee && course.tees?.length > 1 ? ` (${course.tee})` : '') : '';
+  $('#holeTopMeta').textContent = [info.par && `Par ${info.par}`, info.yds && `${info.yds} yds` + (course.tee && course.tees?.length > 1 ? ` (${course.tee})` : ''),
+    info.hcp && `Hcp ${info.hcp}`].filter(Boolean).join(' · ') || 'No scorecard for this hole';
   $('#pinGreen').setAttribute('aria-pressed', pinning);
   $('#pinGreen').textContent = pinning ? 'Tap the green…' : pin ? 'Move green pin' : gp ? 'Adjust green' : 'Pin the green';
-  $('#pinHint').textContent = mine ? `From ${info.oh.provider || 'your course map'}${info.teeColor ? ` (${teeOf(info.teeColor).name} tee)` : ''}: front, middle and back.${info.oh.provider ? '' : ' To change it, use "Map a course".'}`
-    : pinning ? `Tap the middle of the green for hole ${n}.`
-    : pin ? `Using your green pin for hole ${n}.`
-    : info.oh?.est === 'guess' ? `Hole ${n} worked out from the scorecard yardage. If it's the wrong green, tap "Pin the green".`
-    : info.oh?.est === 'label' && gp ? `Hole ${n} found from its number on the map: front, middle and back.`
-    : info.oh?.est === 'label' ? `Hole ${n} found from its number on the map. Tap "Pin the green" to mark the green exactly.`
-    : gp ? 'Green mapped from OpenStreetMap: front, middle and back.'
-    : info.oh ? 'Hole route found but no green outline. Pin the green to set it.'
-    : osmData?.greens.length ? `This hole isn't labeled in OpenStreetMap, so the whole course is shown. Tap "Pin the green," then tap hole ${n}'s green.`
-    : 'Tap "Pin the green," then tap the green on the map. It\'s saved for every round.';
   drawLive();
   if (!map) return;
   osmLayer?.remove();
@@ -1248,7 +1237,7 @@ function renderHole(fly = true){
   if (mine) holeTag(n, mine.tee).addTo(curLayer);
   const showAll = !info.oh && osmData && (osmData.greens.length || osmData.fairways.length);
   if (showAll) for (const [kind, st] of Object.entries(STYLE)) osmData[kind].forEach(p => p.length > 2 && L.polygon(p, { ...st, interactive:false }).addTo(curLayer));
-  if (info.oh){ L.polyline(info.oh.line, { color:'#4FB3FF', weight:4, interactive:false }).addTo(curLayer); pts.push(...info.oh.line); }
+  if (info.oh) pts.push(...info.oh.line);            // the blue route itself is drawn by drawLive (it starts from you)
   if (gp){
     L.polygon(gp, { color:'#4FB3FF', weight:3, fill:false, interactive:false }).addTo(curLayer); pts.push(...gp);
     if (!pin) ['front','back'].forEach(s => L.circleMarker(info.green[s], { radius:5, color:'#04182C', weight:2, fillColor:'#EAF3FF', fillOpacity:1, interactive:false }).addTo(curLayer));
@@ -1262,7 +1251,7 @@ function renderHole(fly = true){
     if (tee && tee === me) pts.push(me);            // keep you on screen too
     /* keep the green clear of the top bar and the status message, and the tee clear of the hole card */
     const top = Math.max(110, ...['.topbar', '#holeTop', '#osmStatus'].map(s => $(s).hidden ? 0 : $(s).getBoundingClientRect().bottom + 24));
-    if (pts.length > 1) flyToTurned(pts, { l:30, r:30, t:top, b:Math.max(220, $('#holeCard').offsetHeight + 36) }, 18);
+    if (pts.length > 1) flyToTurned(pts, { l:30, r:30, t:top, b:Math.max(120, $('#holeCard').offsetHeight + 36) }, 18);
     else if (pts.length) map.flyTo(pts[0], 18, { duration:.6 });
     else fitCourse();
   }

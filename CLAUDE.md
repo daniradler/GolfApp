@@ -68,10 +68,15 @@ saying something works.
 3. **Round**: one hole at a time. Map shows only the current hole's features
    (route line, its green with front/middle/back dots, nearby tee/fairway/
    bunkers/water). **Hole box at the top** (`#holeTop`): ‹ Hole N › with par ·
-   handicap (the arrows change holes). **Yards-to-green counter** (`#greenCount`,
-   white on see-through black, left under the hole box): you → middle of the
-   green, miles when far. Hole card at bottom: Hole N, yards (tee), **live GPS
-   yardage** to Front / Middle / Back, **Set my location**, **Pin the green**.
+   yards (tee) · Hcp (the arrows change holes). **Blue route** (drawn in
+   `drawLive()`): from you to the middle of the green through any bends still
+   ahead of you (bends within 30 m or behind you are dropped), so it shortens as
+   you move; with no location (or >1500 yds away) it's the whole hole line. A
+   white-on-see-through-black label halfway along it (`alongLine()`, `.route-tag`)
+   shows yards you → middle of green (straight line), or the hole line's length.
+   **Compact bottom card** (`.holecard.compact`): Hole N, **Set my location**,
+   **Pin the green** (hidden on mapped holes), and the yellow spot box when a spot
+   is set. No front/middle/back numbers and no hint text any more.
    **End round** (top right) returns to overview.
    - **Set my location** (stand-in until GPS works on the phone): tap it, then
      tap the map; that point becomes `me` (`manualMe`, GPS updates ignored while
