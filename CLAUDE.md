@@ -91,6 +91,17 @@ saying something works.
      (`#clubSheet`, `openClubSheet()`): yards per club (empty = typical number)
      and a tick for "in my bag"; saved as you type in `caddie-voice-clubs`
      `{club:{y, off}}`; `bag()` = your clubs with your yards, longest first.
+   - **Hey Caddy** (`#caddyBtn`, bottom left, same height as the club box; on/off =
+     mute): `SpeechRecognition` (continuous, restarted on `onend`, stopped while
+     speaking so it doesn't hear itself). `heard()` looks for the wake words
+     (`WAKE`: hey/hi/ok + caddy and mis-hearings like "katie"); a question in the
+     same sentence is answered at once, else it says "Yes?" and takes the next
+     sentence within 8 s. `caddyAnswer(q)`: front / back / club / handicap /
+     total yards / par / which hole / green-middle, else `yardageWords()` (full
+     read-out). `speak()` picks the best English voice (`pickVoice()`). Turned off
+     and hidden outside a round (`caddyOff()`). No mic permission → turns itself
+     off with a message. Without SpeechRecognition the button just reads the yards.
+     Only works while the app is open on screen (native app needed for pocket use).
    - **Set my location** (stand-in until GPS works on the phone): tap it, then
      tap the map; that point becomes `me` (`manualMe`, GPS updates ignored while
      set), cleared by End round. Start round and each hole change put you on
@@ -259,10 +270,10 @@ a real bug once).
 
 ## Not built yet (roadmap, roughly in order)
 
-1. **Spoken yardage** — the original point of the app. Live GPS distances are
-   done (see App flow); still to do: speak them with the Web Speech API
-   (`speechSynthesis`) on tap; optionally earbud/watch media button via the
-   Media Session API. GPS needs HTTPS (fine on Netlify and localhost).
+1. **Spoken yardage** — "Hey Caddy" is built (see App flow). Still possible:
+   an AI fallback for free-form questions (Netlify function → Claude with the
+   round context, key in a Netlify env var; not built), earbud/watch media
+   button via the Media Session API.
 2. Shot tracking (mark shot → walk to ball → distance) and **per-club averages**:
    the owner wants the app to work out each player's average distance per club
    once GPS works; those averages should fill in My clubs automatically (typed

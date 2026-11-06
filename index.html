@@ -99,6 +99,18 @@ input::placeholder{color:var(--mist);opacity:.7}
 .holecard.compact .pinrow{align-items:center}
 .holecard.compact .num{flex:0 0 auto;font-family:var(--display);font-weight:800;font-size:22px;letter-spacing:.03em;text-transform:uppercase;padding:0 4px}
 .holecard.compact .pinbtn{padding:9px 8px;font-size:14px}
+.caddy{position:absolute;z-index:1150;left:max(12px,env(safe-area-inset-left,0px));bottom:100px;display:flex;align-items:center;gap:8px;
+  background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:14px;padding:8px 12px 8px 10px;box-shadow:0 4px 14px rgba(0,0,0,.35);text-align:left}
+.caddy svg{width:26px;height:26px;flex:0 0 auto}
+.caddy b{display:block;font-family:var(--display);font-weight:800;font-size:18px;line-height:1;text-transform:uppercase;letter-spacing:.03em}
+.caddy small{display:block;font-size:11px;color:var(--mist)}
+.caddy .on{display:none}
+.caddy[aria-pressed="true"]{border-color:var(--play)}
+.caddy[aria-pressed="true"] .on{display:inline}.caddy[aria-pressed="true"] .off{display:none}
+.caddy[aria-pressed="true"] svg{color:var(--play)}
+.caddy.awake svg,.caddy.talking svg{color:#fff}
+.caddy.awake{background:var(--play);color:var(--play-ink)}.caddy.awake small{color:var(--play-ink)}
+@media (prefers-reduced-motion:no-preference){.caddy.awake svg{animation:caddyPulse 1s ease-in-out infinite}@keyframes caddyPulse{50%{transform:scale(1.15)}}}
 .club{position:absolute;z-index:1150;right:max(12px,env(safe-area-inset-right,0px));bottom:100px;width:140px;display:flex;flex-direction:column;gap:6px}   /* menu and box share this width */
 .clubbtn{background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:14px;padding:6px 8px;text-align:center;width:100%;box-shadow:0 4px 14px rgba(0,0,0,.35)}
 .clubbtn[aria-expanded="true"]{border-color:var(--play)}
@@ -320,6 +332,12 @@ input::placeholder{color:var(--mist);opacity:.7}
   </div>
   <div class="tees" id="teeRow" role="group" aria-label="Tees" hidden></div>
   <button class="play start-round" id="startRound">Start round</button>
+  <!-- round: "Hey Caddy" voice. Tap to turn listening on or off (mute) -->
+  <button class="caddy" id="caddyBtn" hidden aria-pressed="false" aria-label="Hey Caddy voice">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3" fill="currentColor"/><path d="M6 11a6 6 0 0 0 12 0M12 17v4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+      <path class="off" d="M4 4l16 16" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>
+    <span><b>Caddy</b><small id="caddyState">Off · tap to talk</small></span>
+  </button>
   <!-- round: which club for the yards you have left; tap to pick another -->
   <div class="club" id="clubBox" hidden>
     <div class="clubmenu" id="clubMenu" role="listbox" aria-label="Clubs" hidden></div>
@@ -1125,7 +1143,7 @@ function openMap(k){
 }
 function setMode(m){
   mode = m; const r = m === 'round', mp = m === 'mapping';
-  $('#holeCard').hidden = $('#holeTop').hidden = !r; if (!r){ $('#clubBox').hidden = $('#clubSheet').hidden = true; clubMenu(false); } $('#mapScreen').classList.toggle('round', r);
+  $('#holeCard').hidden = $('#holeTop').hidden = !r; if (!r){ $('#clubBox').hidden = $('#clubSheet').hidden = true; clubMenu(false); caddyOff(); } $('#caddyBtn').hidden = !r; $('#mapScreen').classList.toggle('round', r);
   if (!r) placing = false;
   $('#startRound').hidden = r || mp; $('#endRound').hidden = !r; $('#mapBack').hidden = r;
   $('#mapCard').hidden = !mp; $('#mapDone').hidden = !mp; $('#crosshair').hidden = !mp;
@@ -1196,7 +1214,8 @@ function suggestClub(d, onGreen){
 }
 function showClub(d, onGreen){
   const box = $('#clubBox'), B = bag();
-  if (d == null){ box.hidden = true; clubMenu(false); return; }
+  $('#caddyBtn').style.bottom = ($('#holeCard').offsetHeight + 8) + 'px';
+  if (d == null){ box.hidden = true; clubMenu(false); clubNow = null; return; }
   if (clubPick && (!clubPickAt || !me || distM(clubPickAt, me) > 14 || !B.some(c => c[0] === clubPick))) clubPick = null;   // you moved: back to the suggestion
   const sug = suggestClub(d, onGreen), name = clubPick || sug, y = B.find(c => c[0] === name)[1];
   clubNow = { name, sug, d };
@@ -1837,6 +1856,93 @@ function updateReadout(){
 $('#holePrev').onclick = () => { const c = holeCount(); hole = hole > 1 ? hole-1 : c; pinning = false; spot = null; meToTee(); renderHole(); };
 $('#holeNext').onclick = () => { const c = holeCount(); hole = hole < c ? hole+1 : 1; pinning = false; spot = null; meToTee(); renderHole(); };
 $('#pinGreen').onclick = () => { pinning = !pinning; placing = false; renderHole(false); };
+/* ---------- spoken yardage: the phone's own voice (free, works without signal) ---------- */
+let voice = null;
+function pickVoice(){                                  // the most natural-sounding English voice this phone has
+  const score = v => (/premium|enhanced|natural|neural/i.test(v.name) ? 8 : 0) + (/en[-_]US/i.test(v.lang) ? 4 : 0)
+    + (/samantha|ava|allison|evan|zoe|google us english/i.test(v.name) ? 2 : 0) + (v.localService ? 1 : 0);
+  voice = speechSynthesis.getVoices().filter(v => /^en([-_]|$)/i.test(v.lang)).sort((a, b) => score(b) - score(a))[0] || null;
+}
+if ('speechSynthesis' in window){ pickVoice(); speechSynthesis.addEventListener?.('voiceschanged', pickVoice); }
+const clubWords = n => ({ 'P Wedge':'pitching wedge', 'G Wedge':'gap wedge', 'S Wedge':'sand wedge', 'L Wedge':'lob wedge' }[n] || n);
+/* what the caddie says: middle first (the number you need most), then front and back, then the club */
+function yardageWords(){
+  const g = greenTargets();
+  if (!me) return 'Set your location first.';
+  if (!g.mid) return `Hole ${hole}'s green isn't on the map yet.`;
+  const m = yd(me, g.mid);
+  if (m > 1500) return `You're ${(distM(me, g.mid) / 1609.34).toFixed(1)} miles from hole ${hole}.`;
+  let t = `${m} to the middle`;
+  if (g.front && g.back) t += `. ${yd(me, g.front)} front, ${yd(me, g.back)} back`;
+  if (clubNow && !$('#clubBox').hidden) t += clubNow.name === 'Putter' ? ". You're on the green" : `. ${clubWords(clubNow.name)}`;
+  return t + '.';
+}
+/* ---------- "Hey Caddy": listens while the app is open, answers out loud ----------
+   Speech-to-text is the browser's own (on iPhone it goes through Apple's servers, so it needs signal).
+   It stops listening while it talks so it doesn't hear itself. */
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+const WAKE = /\b(?:hey|hi|ok|okay|a)[,.]?\s+(?:caddy|caddie|caddies|katie|cady|kady|kadi|caddi|catty|cattie|patty)\b/;
+let caddyOn = false, rec = null, awakeUntil = 0, talking = false;
+function caddyState(){
+  const b = $('#caddyBtn'), awake = Date.now() < awakeUntil;
+  b.setAttribute('aria-pressed', caddyOn); b.classList.toggle('awake', caddyOn && awake); b.classList.toggle('talking', talking);
+  $('#caddyState').textContent = !caddyOn ? 'Off · tap to talk' : talking ? 'Talking…' : awake ? 'Listening…' : 'Say "Hey Caddy"';
+}
+function speak(text, after){
+  if (!('speechSynthesis' in window)) return alert("This browser can't talk. Try Safari or Chrome.");
+  speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(text);
+  if (voice){ u.voice = voice; u.lang = voice.lang; } else u.lang = 'en-US';
+  talking = true; stopListening(); caddyState();
+  u.onend = u.onerror = () => { talking = false; after?.(); caddyState(); listen(); };
+  speechSynthesis.speak(u);
+}
+function listen(){
+  if (!caddyOn || talking || rec || !SR) return;
+  const r = rec = new SR(); r.lang = 'en-US'; r.continuous = true; r.interimResults = false;
+  r.onresult = e => { for (let i = e.resultIndex; i < e.results.length; i++) if (e.results[i].isFinal) heard(e.results[i][0].transcript); };
+  r.onerror = e => { if (/not-allowed|service-not-allowed/.test(e.error)){ caddyOff(); alert('Caddy needs the microphone. Allow it for this site, then tap Caddy again.'); } };
+  r.onend = () => { if (rec === r) rec = null; if (caddyOn && !talking) setTimeout(listen, 300); };   // phones stop after a pause: start again
+  try { r.start(); } catch { rec = null; }
+}
+function stopListening(){ const r = rec; rec = null; try { r?.abort(); } catch {} }
+function caddyOff(){ caddyOn = false; awakeUntil = 0; stopListening(); if (talking) speechSynthesis.cancel(); talking = false; caddyState(); }
+/* "hey caddy, how far to the front" in one go, or "hey caddy" … (beep) … "how far to the front" */
+function heard(text){
+  const t = text.toLowerCase().replace(/[^a-z0-9' ]+/g, ' '), w = t.match(WAKE);
+  if (w){
+    const rest = t.slice(w.index + w[0].length).trim();
+    if (rest.split(/\s+/).length >= 2){ awakeUntil = 0; return speak(caddyAnswer(rest)); }
+    awakeUntil = Date.now() + 8000; setTimeout(caddyState, 8100); return speak('Yes?');
+  }
+  if (Date.now() < awakeUntil){ awakeUntil = 0; speak(caddyAnswer(t)); }
+}
+/* what you asked → the answer, from what's on the screen right now */
+function caddyAnswer(q){
+  if (mode !== 'round' || !course) return 'Start a round first.';
+  const info = holeInfo(hole), g = greenTargets(), tee = course.tee && course.tees?.length > 1 ? ` from the ${course.tee} tees` : '';
+  const near = me && g.mid && yd(me, g.mid) <= 1500;
+  const why = !me ? 'Set your location first.' : !g.mid ? `I don't have hole ${hole}'s green on the map yet.`
+    : `You're ${(distM(me, g.mid) / 1609.34).toFixed(1)} miles from hole ${hole}.`;
+  if (/\bfront\b/.test(q)) return !near ? why : g.front ? `${yd(me, g.front)} to the front.` : `I only have the middle: ${yd(me, g.mid)}.`;
+  if (/\bback\b/.test(q)) return !near ? why : g.back ? `${yd(me, g.back)} to the back.` : `I only have the middle: ${yd(me, g.mid)}.`;
+  if (/\b(club|clubs|hit|use|iron|wood|wedge|driver|recommend)\b/.test(q))
+    return !near || !clubNow ? why : clubNow.name === 'Putter' ? "You're on the green. Putter."
+      : `${clubWords(clubNow.name)}. ${yd(me, g.mid)} to the middle.`;
+  if (/handicap|stroke index|\bindex\b|hardest/.test(q)) return info.hcp ? `Hole ${hole} is the number ${info.hcp} handicap.` : `I don't have the handicap for hole ${hole}.`;
+  if (/total|how long|length|how many yards is/.test(q)) return info.yds ? `Hole ${hole} is ${info.yds} yards${tee}.` : `I don't have the yardage for hole ${hole}.`;
+  if (/\bpar\b/.test(q)) return info.par ? `Hole ${hole} is a par ${info.par}.` : `I don't have the par for hole ${hole}.`;
+  if (/(what|which) hole|hole (am i|is this|number)|where am i/.test(q))
+    return `You're on hole ${hole}` + (info.par ? `, a par ${info.par}` : '') + (info.yds ? `, ${info.yds} yards` : '') + '.';
+  if (/green|middle|center|centre|pin|flag|hole|how far|distance|yard/.test(q)) return near ? `${yd(me, g.mid)} to the middle.` : why;
+  return yardageWords();                              // didn't catch the question: give the full read-out
+}
+$('#caddyBtn').onclick = () => {
+  if (caddyOn) return caddyOff();
+  if (!SR){ speak(yardageWords()); return; }          // no listening in this browser: tapping just reads the yards
+  caddyOn = true; caddyState();
+  speak('Caddy is on. Say hey caddy, then ask.');
+};
 $('#setMe').onclick = () => { placing = !placing; pinning = false; renderHole(false); };
 $('#osmRetry').onclick = () => course && loadOSM(course, true);
 $('#osmClose').onclick = () => { $('#osmStatus').hidden = true; };
