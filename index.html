@@ -1886,7 +1886,7 @@ let caddyOn = false, rec = null, awakeUntil = 0, talking = false;
 function caddyState(){
   const b = $('#caddyBtn'), awake = Date.now() < awakeUntil;
   b.setAttribute('aria-pressed', caddyOn); b.classList.toggle('awake', caddyOn && awake); b.classList.toggle('talking', talking);
-  $('#caddyState').textContent = !caddyOn ? 'Off · tap to talk' : talking ? 'Talking…' : awake ? 'Listening…' : 'Say "Hey Caddy"';
+  $('#caddyState').textContent = !caddyOn ? 'Off · tap to talk' : talking ? 'Talking…' : thinking ? 'Thinking…' : awake ? 'Listening…' : 'Say "Hey Caddy"';
 }
 function speak(text, after){
   if (!('speechSynthesis' in window)) return alert("This browser can't talk. Try Safari or Chrome.");
@@ -1912,10 +1912,48 @@ function heard(text){
   const t = text.toLowerCase().replace(/[^a-z0-9' ]+/g, ' '), w = t.match(WAKE);
   if (w){
     const rest = t.slice(w.index + w[0].length).trim();
-    if (rest.split(/\s+/).length >= 2){ awakeUntil = 0; return speak(caddyAnswer(rest)); }
+    if (rest.split(/\s+/).length >= 2){ awakeUntil = 0; return reply(rest); }
     awakeUntil = Date.now() + 8000; setTimeout(caddyState, 8100); return speak('Yes?');
   }
-  if (Date.now() < awakeUntil){ awakeUntil = 0; speak(caddyAnswer(t)); }
+  if (Date.now() < awakeUntil){ awakeUntil = 0; reply(t); }
+}
+/* questions the phone knows (yards, club, hole…) are answered right here for free; anything else goes to the AI caddy */
+function reply(q){ const a = caddyAnswer(q); return a ? speak(a) : askAI(q); }
+let aiOff = false, thinking = false;
+async function askAI(q){
+  if (aiOff || !navigator.onLine) return speak(yardageWords());
+  thinking = true; caddyState();
+  let r = null, d = {};
+  try {
+    const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), 10000);
+    r = await fetch('/api/caddy', { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ q, round: roundInfo() }), signal: ctl.signal });
+    clearTimeout(t); d = await r.json().catch(() => ({}));
+  } catch {}
+  thinking = false;
+  if (!caddyOn && !talking) return caddyState();               // muted while it was thinking
+  if (r?.ok && d.answer) return speak(d.answer);
+  if (r && [404, 405, 501, 503].includes(r.status)){ aiOff = true; return speak(yardageWords()); }   // not set up (or on this computer)
+  if (r?.status === 429 && d.answer) return speak(d.answer);
+  speak("I can't reach the AI caddy right now. " + yardageWords());
+}
+/* what the AI caddy gets to know: this hole, your distances, your club and your yards, hazards ahead */
+function roundInfo(){
+  const info = holeInfo(hole), g = greenTargets(), near = me && g.mid && yd(me, g.mid) <= 1500;
+  const r = { course: course.name, hole, par: info.par, yards: info.yds, hcp: info.hcp, tee: course.tee || info.teeColor || null,
+    bag: bag().filter(c => c[0] !== 'Putter') };
+  if (near){
+    Object.assign(r, { middle: yd(me, g.mid), front: g.front ? yd(me, g.front) : null, back: g.back ? yd(me, g.back) : null,
+      onGreen: clubNow?.name === 'Putter', club: clubNow?.name || null });
+    const toG = distM(me, g.mid), k = Math.cos(me[0] * Math.PI / 180);
+    const xy = p => [(p[1] - me[1]) * k * 111320, (p[0] - me[0]) * 110540];               // metres east, north of you
+    const [ux, uy] = xy(g.mid);
+    r.hazards = (info.oh?.mapped?.hazards || []).map(z => {
+      const ds = z.shape.map(p => yd(me, p)), c = centroid(z.shape), [vx, vy] = xy(c);
+      const off = (ux * vy - uy * vx) / (Math.hypot(ux, uy) || 1);                          // metres left (+) / right (−) of your line to the green
+      return { type: z.type, reach: Math.min(...ds), carry: Math.max(...ds), side: Math.abs(off) < 8 ? 'in line' : off > 0 ? 'left' : 'right', ahead: distM(c, g.mid) < toG + 10 };
+    }).filter(h => h.ahead && h.reach < 400).map(({ ahead, ...h }) => h);
+  }
+  return r;
 }
 /* what you asked → the answer, from what's on the screen right now */
 function caddyAnswer(q){
@@ -1924,18 +1962,19 @@ function caddyAnswer(q){
   const near = me && g.mid && yd(me, g.mid) <= 1500;
   const why = !me ? 'Set your location first.' : !g.mid ? `I don't have hole ${hole}'s green on the map yet.`
     : `You're ${(distM(me, g.mid) / 1609.34).toFixed(1)} miles from hole ${hole}.`;
-  if (/\bfront\b/.test(q)) return !near ? why : g.front ? `${yd(me, g.front)} to the front.` : `I only have the middle: ${yd(me, g.mid)}.`;
-  if (/\bback\b/.test(q)) return !near ? why : g.back ? `${yd(me, g.back)} to the back.` : `I only have the middle: ${yd(me, g.mid)}.`;
-  if (/\b(club|clubs|hit|use|iron|wood|wedge|driver|recommend)\b/.test(q))
+  if (/\bfront\b(?! of)/.test(q)) return !near ? why : g.front ? `${yd(me, g.front)} to the front.` : `I only have the middle: ${yd(me, g.mid)}.`;
+  if (/\bback\b(?! of)/.test(q)) return !near ? why : g.back ? `${yd(me, g.back)} to the back.` : `I only have the middle: ${yd(me, g.mid)}.`;
+  if (/(what|which) club|club should|what (should|do) i (hit|use)|recommend|^club$/.test(q))
     return !near || !clubNow ? why : clubNow.name === 'Putter' ? "You're on the green. Putter."
       : `${clubWords(clubNow.name)}. ${yd(me, g.mid)} to the middle.`;
   if (/handicap|stroke index|\bindex\b|hardest/.test(q)) return info.hcp ? `Hole ${hole} is the number ${info.hcp} handicap.` : `I don't have the handicap for hole ${hole}.`;
   if (/total|how long|length|how many yards is/.test(q)) return info.yds ? `Hole ${hole} is ${info.yds} yards${tee}.` : `I don't have the yardage for hole ${hole}.`;
-  if (/\bpar\b/.test(q)) return info.par ? `Hole ${hole} is a par ${info.par}.` : `I don't have the par for hole ${hole}.`;
+  if (/(what|which)\b.{0,12}\bpar\b|\bpar\b.{0,6}(this|hole)|^par$/.test(q)) return info.par ? `Hole ${hole} is a par ${info.par}.` : `I don't have the par for hole ${hole}.`;
   if (/(what|which) hole|hole (am i|is this|number)|where am i/.test(q))
     return `You're on hole ${hole}` + (info.par ? `, a par ${info.par}` : '') + (info.yds ? `, ${info.yds} yards` : '') + '.';
-  if (/green|middle|center|centre|pin|flag|hole|how far|distance|yard/.test(q)) return near ? `${yd(me, g.mid)} to the middle.` : why;
-  return yardageWords();                              // didn't catch the question: give the full read-out
+  if (/how far|distance|yardage|how many yards|\b(to|from) the (green|pin|flag|middle|center|centre|hole)\b|^(the )?(green|middle|center|pin|flag)$/.test(q))
+    return near ? `${yd(me, g.mid)} to the middle.` : why;
+  return null;                                        // not one of mine: ask the AI caddy
 }
 $('#caddyBtn').onclick = () => {
   if (caddyOn) return caddyOff();

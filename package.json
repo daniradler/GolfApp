@@ -8,6 +8,7 @@
     "start:lan": "npx --yes serve@14.2.4 -l tcp://0.0.0.0:8000 ."
   },
   "dependencies": {
-    "@netlify/blobs": "^7.0.0"
+    "@netlify/blobs": "^7.0.0",
+    "@anthropic-ai/sdk": "^1.6.0"
   }
 }

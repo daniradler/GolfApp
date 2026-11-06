@@ -98,7 +98,11 @@ saying something works.
      same sentence is answered at once, else it says "Yes?" and takes the next
      sentence within 8 s. `caddyAnswer(q)`: front / back / club / handicap /
      total yards / par / which hole / green-middle, else `yardageWords()` (full
-     read-out). `speak()` picks the best English voice (`pickVoice()`). Turned off
+     read-out) — returns null for anything else, which `reply()` sends to the AI
+     caddy (`askAI()` → POST `/api/caddy` with `roundInfo()`: hole, par, yards,
+     hcp, tee, front/middle/back, club, `bag()` yards, mapped hazards ahead with
+     reach/carry yards and left/right/in line). 404/405/501/503 → `aiOff` for the
+     session and the yardage read-out instead. `speak()` picks the best English voice (`pickVoice()`). Turned off
      and hidden outside a round (`caddyOff()`). No mic permission → turns itself
      off with a message. Without SpeechRecognition the button just reads the yards.
      Only works while the app is open on screen (native app needed for pocket use).
@@ -213,6 +217,7 @@ saying something works.
 | Course search + scorecards | OpenGolfAPI `https://api.opengolfapi.org` | `GET /v1/courses/search?q=` → `courses[]` (id, course_name, city, state, latitude, longitude, par). `GET /api/v1/courses/{id}` → `tees[]` (tee_name, gender, par, yardage) and `holes_data[]` (number, par, handicap_index, yardages{red,blue,…}). Its per-hole coordinates are null for the courses checked, so layouts come from OSM. Works from the browser (CORS checked Oct 22 2026). Some tees have a total but no per-hole yardages (e.g. Bethpage Black "Regulation"). If it fails the app falls back to Nominatim and labels results "Map only". |
 | Course search + scorecards (2nd source) | GolfCourseAPI via our `/api/gca` pass-through (`netlify/functions/gca.mjs`) | Key in Netlify env var `GOLFCOURSEAPI_KEY` (Bearer auth); never in index.html. Free plan = 35 requests/day, so the pass-through caches searches 3 days and courses 90 days (Blobs store `golfcourseapi`) and the app sends one search per query (plus one retry with the longest word if empty). `GET /v1/search?search_query=` → `courses[]` (id 8-char, club_name, course_name, location{address,city,state,latitude,longitude}); `GET /v1/courses/{id}` → `tees.male[]/female[]` (tee_name, course_rating, slope_rating, total_yards, par_total, holes[]{par,yardage,handicap}). No hole coordinates. Spec: https://api.golfcourseapi.com/docs/api/openapi.yml. `trimGca()` converts to the OpenGolfAPI scorecard shape (women's tees sharing a men's name become "Name (W)"). When both sources have a course (`sameCourse()`: all words match both ways, within 2 km) the GolfCourseAPI copy is shown. Without the key, `/api/gca` returns 503 and search silently uses OpenGolfAPI only. |
 | Course search + GPS hole maps (pending partnership) | iGolf Connect via our `/api/igolf` service (`netlify/functions/igolf.mjs`) | **Built, not connected**: needs iGolf's private docs for ① request signing (`igolf.send`) and ② field names (`igolf.toCourses`, `igolf.toNeutral`); everything else is done and tested with a stand-in. Keys in Netlify env (`IGOLF_API_KEY`, `IGOLF_SECRET_KEY`, `IGOLF_BASE_URL`, optional `IGOLF_CACHE_DAYS`). Actions `status` (incl. monthly billed-request counts), `search`, `near`, `course` → `{course, scorecard, map}` where map is GolfCourseMaps format (`toCourseMap`). App: `igolfSearch`, `openIgolf`, `loadProviderMap` → `providerMap`; `playHoles()` = iGolf holes with your own mapped holes on top (own map wins); `holeInfo` marks `oh.provider = 'iGolf'`; providerMap is never saved into your maps. 501/503 → `igolfOff` for the session. Full guide + meeting checklist: `docs/IGOLF.md`. |
+| AI caddy (golf questions) | Claude Haiku 5.5 (`claude-haiku-5-5`) via our `/api/caddy` (`netlify/functions/caddy.mjs`, `@anthropic-ai/sdk`) | Key in Netlify env var `ANTHROPIC_API_KEY` (pay-as-you-go, ~1/50 cent per question); never in index.html. Golf only: `SYSTEM` prompt makes it answer anything else with `OFF_TOPIC` word for word (refusals → same line). Effort `low`, 8 s timeout, answers ≤40 words for speech. Only whitelisted round fields reach the prompt (`roundText()`). Site-wide daily cap `CADDY_DAILY_LIMIT` (default 300, Blobs store `caddy`) → 429 with a spoken line. No key → 503. Logic in `createHandler({client, store})` for tests with a fake client. |
 | Search fallback | Nominatim | `format=jsonv2`, prefers `type=golf_course` |
 | Hole layouts | Overpass API (overpass-api.de, maps.mail.ru, overpass.kumi.systems — tried in order, 40 s each) | Two independent lookups (one failing keeps the other). On total failure the status says why (busy/timeout/offline) and retries once after 20 s. First query: features inside the `leisure=golf_course` area around the course center; if < 18 holes, retries with a 1500 m radius and keeps whichever has more holes. Tags used: `golf=hole` (ref, par, handicap, line tee→green), `green`, `tee`, `fairway`, `bunker`, `*water_hazard`, `natural=water`. |
 | Satellite | Esri World Imagery | attribution shown on the map |
@@ -270,10 +275,9 @@ a real bug once).
 
 ## Not built yet (roadmap, roughly in order)
 
-1. **Spoken yardage** — "Hey Caddy" is built (see App flow). Still possible:
-   an AI fallback for free-form questions (Netlify function → Claude with the
-   round context, key in a Netlify env var; not built), earbud/watch media
-   button via the Media Session API.
+1. **Spoken yardage** — "Hey Caddy" and the AI caddy are built (see App flow and
+   Data sources). Still possible: earbud/watch media button via the Media
+   Session API; follow-up questions (the AI caddy has no memory between questions).
 2. Shot tracking (mark shot → walk to ball → distance) and **per-club averages**:
    the owner wants the app to work out each player's average distance per club
    once GPS works; those averages should fill in My clubs automatically (typed
