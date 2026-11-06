@@ -99,27 +99,27 @@ input::placeholder{color:var(--mist);opacity:.7}
 .holecard.compact .pinrow{align-items:center}
 .holecard.compact .num{flex:0 0 auto;font-family:var(--display);font-weight:800;font-size:22px;letter-spacing:.03em;text-transform:uppercase;padding:0 4px}
 .holecard.compact .pinbtn{padding:9px 8px;font-size:14px}
-.club{position:absolute;z-index:1150;right:max(12px,env(safe-area-inset-right,0px));bottom:100px;display:flex;flex-direction:column;align-items:flex-end;gap:6px}
-.clubbtn{background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:14px;padding:6px 12px;text-align:center;min-width:92px;box-shadow:0 4px 14px rgba(0,0,0,.35)}
+.club{position:absolute;z-index:1150;right:max(12px,env(safe-area-inset-right,0px));bottom:100px;width:140px;display:flex;flex-direction:column;gap:6px}   /* menu and box share this width */
+.clubbtn{background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:14px;padding:6px 8px;text-align:center;width:100%;box-shadow:0 4px 14px rgba(0,0,0,.35)}
 .clubbtn[aria-expanded="true"]{border-color:var(--play)}
 .clubbtn small{display:block;font-size:10px;letter-spacing:.1em;text-transform:uppercase;font-weight:600;color:var(--mist)}
 .clubbtn b{display:block;font-family:var(--display);font-weight:800;font-size:22px;line-height:1.05;text-transform:uppercase}
 .clubbtn span{display:block;font-size:12px;font-variant-numeric:tabular-nums;color:var(--mist)}
 .clubbtn b::after{content:" ▾";font-size:14px}
-.clubmenu{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:4px;max-height:min(360px,50vh);overflow-y:auto;min-width:190px;box-shadow:0 6px 20px rgba(0,0,0,.5);
-  transform-origin:bottom right}
-/* the menu unfolds up and out of the club box, and folds back into it */
+.clubmenu{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:4px;max-height:min(360px,50vh);overflow-y:auto;width:100%;box-shadow:0 6px 20px rgba(0,0,0,.5);
+  transform-origin:bottom center}
+/* the menu unfolds straight up out of the club box, bottom to top, and folds back down into it */
 @media (prefers-reduced-motion:no-preference){
   .clubmenu:not([hidden]){animation:clubOpen .22s cubic-bezier(.2,.8,.3,1)}
   .clubmenu.closing{animation:clubClose .16s ease-in forwards}
   .clubmenu:not([hidden]) button{animation:clubItem .22s ease-out backwards}
   .clubmenu.still,.clubmenu.still button{animation:none}
-  @keyframes clubOpen{from{transform:scale(.45,.08);opacity:.2}}
-  @keyframes clubClose{to{transform:scale(.45,.08);opacity:0}}
+  @keyframes clubOpen{from{transform:scaleY(0);opacity:.3}}
+  @keyframes clubClose{to{transform:scaleY(0);opacity:0}}
   @keyframes clubItem{from{opacity:0}}
 }
-.clubmenu button{display:flex;justify-content:space-between;gap:12px;width:100%;background:transparent;color:var(--ink);border:0;border-radius:10px;padding:10px 12px;font-size:15px;font-weight:600;text-align:left}
-.clubmenu button span{color:var(--mist);font-weight:500;font-variant-numeric:tabular-nums}
+.clubmenu button{display:flex;justify-content:space-between;align-items:baseline;gap:6px;width:100%;background:transparent;color:var(--ink);border:0;border-radius:10px;padding:9px 8px;font-size:14px;font-weight:600;text-align:left;white-space:nowrap}
+.clubmenu button span{color:var(--mist);font-weight:500;font-size:12px;font-variant-numeric:tabular-nums}
 .clubmenu button[aria-selected="true"]{background:var(--play);color:var(--play-ink)}
 .clubmenu button[aria-selected="true"] span{color:var(--play-ink)}
 .clubmenu button.edit{justify-content:center;color:var(--play);border-top:1px solid var(--line);border-radius:0 0 10px 10px;margin-top:4px}
@@ -1224,10 +1224,10 @@ function clubMenu(open){
   menu.innerHTML = '';
   bag().forEach(([n, y]) => { const b = document.createElement('button'); b.setAttribute('role', 'option');
     b.setAttribute('aria-selected', n === clubNow.name);
-    b.innerHTML = `${esc(n)}${n === clubNow.sug ? ' ★' : ''}<span>${y ? y + ' yds' : 'on the green'}</span>`;
+    b.innerHTML = `${esc(n)}${n === clubNow.sug ? ' ★' : ''}<span>${y ? y + ' yds' : 'green'}</span>`;
     b.onclick = e => { e.stopPropagation(); clubPick = n === clubNow.sug ? null : n; clubPickAt = me; clubMenu(false); drawLive(); };
     menu.appendChild(b); });
-  const ed = document.createElement('button'); ed.className = 'edit'; ed.textContent = 'My clubs: set my distances…';
+  const ed = document.createElement('button'); ed.className = 'edit'; ed.textContent = 'My distances…';
   ed.onclick = e => { e.stopPropagation(); clubMenu(false); openClubSheet(); };
   menu.appendChild(ed);
   menu.querySelector('[aria-selected="true"]')?.scrollIntoView({ block:'nearest' });

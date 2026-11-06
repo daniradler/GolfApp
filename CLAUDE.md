@@ -84,8 +84,8 @@ saying something works.
      from `drawLive()`): `CLUBS[]` = generic carry yards (Driver 230 … L Wedge 70,
      Putter); suggestion = shortest club whose carry ≥ yards to the middle of the
      green − 5 (Driver if nothing reaches, Putter when you're on the green
-     polygon). Tap → menu (`clubMenu()`, ★ = suggested; unfolds from the box's
-     bottom-right corner and folds back on close, `.closing`/`.still`, off with reduced motion) to pick another; the pick
+     polygon). Tap → menu (`clubMenu()`, ★ = suggested; same 140 px width as the
+     box, unfolds straight up from its bottom edge (scaleY) and folds back down on close, `.closing`/`.still`, off with reduced motion) to pick another; the pick
      ("Your pick") lasts until you move 14+ m or change holes. Hidden with no
      location or when >1500 yds away. Menu's last item opens **My clubs**
      (`#clubSheet`, `openClubSheet()`): yards per club (empty = typical number)
