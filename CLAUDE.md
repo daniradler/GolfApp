@@ -80,11 +80,12 @@ saying something works.
    **Compact bottom card** (`.holecard.compact`): Hole N, **Set my location**,
    **Pin the green** (hidden on mapped holes). No front/middle/back numbers and no hint text any more.
    **End round** (top right) returns to overview.
-   - **Club suggestion** (`#clubBox`, bottom right above the card; `showClub()`
+   - **Club suggestion** (`#clubBox`, app-blue `--panel` box, bottom right above the card; `showClub()`
      from `drawLive()`): `CLUBS[]` = generic carry yards (Driver 230 … L Wedge 70,
      Putter); suggestion = shortest club whose carry ≥ yards to the middle of the
      green − 5 (Driver if nothing reaches, Putter when you're on the green
-     polygon). Tap → menu (`clubMenu()`, ★ = suggested) to pick another; the pick
+     polygon). Tap → menu (`clubMenu()`, ★ = suggested; unfolds from the box's
+     bottom-right corner and folds back on close, `.closing`/`.still`, off with reduced motion) to pick another; the pick
      ("Your pick") lasts until you move 14+ m or change holes. Hidden with no
      location or when >1500 yds away. Menu's last item opens **My clubs**
      (`#clubSheet`, `openClubSheet()`): yards per club (empty = typical number)

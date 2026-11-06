@@ -100,12 +100,24 @@ input::placeholder{color:var(--mist);opacity:.7}
 .holecard.compact .num{flex:0 0 auto;font-family:var(--display);font-weight:800;font-size:22px;letter-spacing:.03em;text-transform:uppercase;padding:0 4px}
 .holecard.compact .pinbtn{padding:9px 8px;font-size:14px}
 .club{position:absolute;z-index:1150;right:max(12px,env(safe-area-inset-right,0px));bottom:100px;display:flex;flex-direction:column;align-items:flex-end;gap:6px}
-.clubbtn{background:rgba(0,0,0,.6);color:#fff;border:1px solid rgba(255,255,255,.7);border-radius:14px;padding:6px 12px;text-align:center;min-width:92px}
-.clubbtn small{display:block;font-size:10px;letter-spacing:.1em;text-transform:uppercase;font-weight:600;opacity:.8}
+.clubbtn{background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:14px;padding:6px 12px;text-align:center;min-width:92px;box-shadow:0 4px 14px rgba(0,0,0,.35)}
+.clubbtn[aria-expanded="true"]{border-color:var(--play)}
+.clubbtn small{display:block;font-size:10px;letter-spacing:.1em;text-transform:uppercase;font-weight:600;color:var(--mist)}
 .clubbtn b{display:block;font-family:var(--display);font-weight:800;font-size:22px;line-height:1.05;text-transform:uppercase}
-.clubbtn span{display:block;font-size:12px;font-variant-numeric:tabular-nums;opacity:.9}
+.clubbtn span{display:block;font-size:12px;font-variant-numeric:tabular-nums;color:var(--mist)}
 .clubbtn b::after{content:" ▾";font-size:14px}
-.clubmenu{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:4px;max-height:min(360px,50vh);overflow-y:auto;min-width:190px;box-shadow:0 6px 20px rgba(0,0,0,.5)}
+.clubmenu{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:4px;max-height:min(360px,50vh);overflow-y:auto;min-width:190px;box-shadow:0 6px 20px rgba(0,0,0,.5);
+  transform-origin:bottom right}
+/* the menu unfolds up and out of the club box, and folds back into it */
+@media (prefers-reduced-motion:no-preference){
+  .clubmenu:not([hidden]){animation:clubOpen .22s cubic-bezier(.2,.8,.3,1)}
+  .clubmenu.closing{animation:clubClose .16s ease-in forwards}
+  .clubmenu:not([hidden]) button{animation:clubItem .22s ease-out backwards}
+  .clubmenu.still,.clubmenu.still button{animation:none}
+  @keyframes clubOpen{from{transform:scale(.45,.08);opacity:.2}}
+  @keyframes clubClose{to{transform:scale(.45,.08);opacity:0}}
+  @keyframes clubItem{from{opacity:0}}
+}
 .clubmenu button{display:flex;justify-content:space-between;gap:12px;width:100%;background:transparent;color:var(--ink);border:0;border-radius:10px;padding:10px 12px;font-size:15px;font-weight:600;text-align:left}
 .clubmenu button span{color:var(--mist);font-weight:500;font-variant-numeric:tabular-nums}
 .clubmenu button[aria-selected="true"]{background:var(--play);color:var(--play-ink)}
@@ -1195,9 +1207,20 @@ function showClub(d, onGreen){
   box.hidden = false;
   if (!$('#clubMenu').hidden) clubMenu(true);
 }
+let clubFold = null;
 function clubMenu(open){
-  const menu = $('#clubMenu'); menu.hidden = !open; $('#clubBtn').setAttribute('aria-expanded', open);
-  if (!open || !clubNow) return;
+  const menu = $('#clubMenu'); $('#clubBtn').setAttribute('aria-expanded', open);
+  clearTimeout(clubFold); menu.classList.remove('closing');
+  if (!open) menu.classList.remove('still');
+  if (!open){                                         // fold it back into the box, then hide it
+    if (menu.hidden) return;
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) menu.hidden = true;
+    else { menu.classList.add('closing'); clubFold = setTimeout(() => { menu.hidden = true; menu.classList.remove('closing'); }, 160); }
+    return;
+  }
+  if (!clubNow) return;
+  menu.classList.toggle('still', !menu.hidden);       // already open (just refreshing the list): don't unfold again
+  menu.hidden = false;
   menu.innerHTML = '';
   bag().forEach(([n, y]) => { const b = document.createElement('button'); b.setAttribute('role', 'option');
     b.setAttribute('aria-selected', n === clubNow.name);
