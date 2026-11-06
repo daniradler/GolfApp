@@ -86,7 +86,10 @@ saying something works.
      green − 5 (Driver if nothing reaches, Putter when you're on the green
      polygon). Tap → menu (`clubMenu()`, ★ = suggested) to pick another; the pick
      ("Your pick") lasts until you move 14+ m or change holes. Hidden with no
-     location or when >1500 yds away. Own club distances: not built yet.
+     location or when >1500 yds away. Menu's last item opens **My clubs**
+     (`#clubSheet`, `openClubSheet()`): yards per club (empty = typical number)
+     and a tick for "in my bag"; saved as you type in `caddie-voice-clubs`
+     `{club:{y, off}}`; `bag()` = your clubs with your yards, longest first.
    - **Set my location** (stand-in until GPS works on the phone): tap it, then
      tap the map; that point becomes `me` (`manualMe`, GPS updates ignored while
      set), cleared by End round. Start round and each hole change put you on
@@ -238,7 +241,7 @@ the hole line (`greenFor()`).
 OpenGolfAPI scorecard · `caddie-voice-osm2-{id}` Overpass result (30-day
 cache) · `caddie-voice-geo` Nominatim lookups · `caddie-voice-greens` user
 green pins `{courseId:{hole:[lat,lng]}}` · `caddie-voice-tee-{courseId}`
-chosen tee · `caddie-voice-maps` your course maps (backup of / stand-in for
+chosen tee · `caddie-voice-clubs` My clubs yards / in-bag · `caddie-voice-maps` your course maps (backup of / stand-in for
 GolfCourseMaps files) · `caddie-voice-hidden` (legacy, mostly unused).
 
 Wrap every localStorage access in try/catch (already the pattern).
@@ -259,7 +262,10 @@ a real bug once).
    done (see App flow); still to do: speak them with the Web Speech API
    (`speechSynthesis`) on tap; optionally earbud/watch media button via the
    Media Session API. GPS needs HTTPS (fine on Netlify and localhost).
-2. Shot tracking (mark shot → walk to ball → distance) and per-club averages.
+2. Shot tracking (mark shot → walk to ball → distance) and **per-club averages**:
+   the owner wants the app to work out each player's average distance per club
+   once GPS works; those averages should fill in My clubs automatically (typed
+   numbers stay as a fallback).
 3. Mapper extras: carry distances to hazards in a
    round, sharing maps between players without going through GitHub.
 4. **Native apps** for background GPS and a tap-to-speak watch button:

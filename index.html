@@ -110,6 +110,18 @@ input::placeholder{color:var(--mist);opacity:.7}
 .clubmenu button span{color:var(--mist);font-weight:500;font-variant-numeric:tabular-nums}
 .clubmenu button[aria-selected="true"]{background:var(--play);color:var(--play-ink)}
 .clubmenu button[aria-selected="true"] span{color:var(--play-ink)}
+.clubmenu button.edit{justify-content:center;color:var(--play);border-top:1px solid var(--line);border-radius:0 0 10px 10px;margin-top:4px}
+.clubsheet{position:absolute;inset:0;z-index:1300;background:rgba(0,0,0,.55);display:flex;align-items:flex-end;justify-content:center}
+.clubsheet-in{width:min(440px,100%);max-height:88vh;display:flex;flex-direction:column;gap:10px;background:var(--panel);border:1px solid var(--line);
+  border-radius:20px 20px 0 0;padding:16px max(16px,env(safe-area-inset-right,0px)) calc(16px + env(safe-area-inset-bottom,0px))}
+.clubsheet-in h3{margin:0;font-family:var(--display);font-weight:800;font-size:26px;text-transform:uppercase;letter-spacing:.03em}
+.clublist{overflow-y:auto;display:flex;flex-direction:column;gap:6px}
+.clubrow{display:flex;align-items:center;gap:10px;background:var(--field);border:1px solid var(--line);border-radius:12px;padding:6px 10px}
+.clubrow input[type=checkbox]{width:22px;height:22px;flex:0 0 auto;accent-color:var(--play)}
+.clubrow span{flex:1;font-weight:600}
+.clubrow input[type=number]{width:84px;flex:0 0 auto;padding:8px 10px;font-size:17px;text-align:right}
+.clubrow small{color:var(--mist);width:24px}
+.clubrow.off span,.clubrow.off input[type=number]{opacity:.4}
 .map-screen.round .layer-btn{top:calc(140px + env(safe-area-inset-top,0px))}
 .map-screen.round .osm-status{top:calc(140px + env(safe-area-inset-top,0px))}
 .pinbtn{flex:1;background:var(--field);color:var(--ink);border:1px solid var(--line);border-radius:12px;padding:12px;font-weight:600;font-size:15px}
@@ -301,6 +313,13 @@ input::placeholder{color:var(--mist);opacity:.7}
     <div class="clubmenu" id="clubMenu" role="listbox" aria-label="Clubs" hidden></div>
     <button class="clubbtn" id="clubBtn" aria-haspopup="listbox" aria-expanded="false"><small id="clubTag">Suggested</small><b id="clubName">–</b><span id="clubYds"></span></button>
   </div>
+  <!-- My clubs: your own distance for each club -->
+  <div class="clubsheet" id="clubSheet" hidden role="dialog" aria-labelledby="clubSheetTitle"><div class="clubsheet-in">
+    <h3 id="clubSheetTitle">My clubs</h3>
+    <p class="hint">How far you carry each club. Leave a box empty to use the number shown. Untick clubs that aren't in your bag.</p>
+    <div class="clublist" id="clubList"></div>
+    <div class="mrow"><button id="clubReset">Reset</button><button class="go" id="clubDone">Done</button></div>
+  </div></div>
   <div class="holecard compact" id="holeCard" hidden><div class="holecard-in">
     <div class="pinrow">
       <div class="num" id="holeNum">Hole 1</div>
@@ -1094,7 +1113,7 @@ function openMap(k){
 }
 function setMode(m){
   mode = m; const r = m === 'round', mp = m === 'mapping';
-  $('#holeCard').hidden = $('#holeTop').hidden = !r; if (!r){ $('#clubBox').hidden = true; clubMenu(false); } $('#mapScreen').classList.toggle('round', r);
+  $('#holeCard').hidden = $('#holeTop').hidden = !r; if (!r){ $('#clubBox').hidden = $('#clubSheet').hidden = true; clubMenu(false); } $('#mapScreen').classList.toggle('round', r);
   if (!r) placing = false;
   $('#startRound').hidden = r || mp; $('#endRound').hidden = !r; $('#mapBack').hidden = r;
   $('#mapCard').hidden = !mp; $('#mapDone').hidden = !mp; $('#crosshair').hidden = !mp;
@@ -1149,17 +1168,25 @@ function startRound(){ hole = 1; spot = null; startGPS(); meToTee(); setMode('ro
    Typical carry distances for an average golfer; later these can be your own numbers. */
 const CLUBS = [['Driver', 230], ['3 Wood', 215], ['5 Wood', 200], ['Hybrid', 190], ['4 Iron', 180], ['5 Iron', 170], ['6 Iron', 160],
   ['7 Iron', 150], ['8 Iron', 140], ['9 Iron', 130], ['P Wedge', 120], ['G Wedge', 105], ['S Wedge', 90], ['L Wedge', 70], ['Putter', 0]];
+/* your own numbers ("My clubs"): {club: {y: yards, off: true if it's not in your bag}}, saved on this device */
+const CKEY = 'caddie-voice-clubs';
+let myClubs = (() => { try { return JSON.parse(localStorage.getItem(CKEY)) || {}; } catch { return {}; } })();
+const saveClubs = () => { try { localStorage.setItem(CKEY, JSON.stringify(myClubs)); } catch {} };
+/* the clubs in your bag with your yards, longest first (putter last) */
+const bag = () => CLUBS.map(([n, y]) => [n, n === 'Putter' ? 0 : myClubs[n]?.y || y]).filter(([n]) => n === 'Putter' || !myClubs[n]?.off)
+  .sort((a, b) => (b[1] || -1) - (a[1] || -1));
 let clubPick = null, clubPickAt = null, clubNow = null;   // the club you chose, where you were when you chose it, and what's shown
 function suggestClub(d, onGreen){
+  const B = bag();
   if (onGreen) return 'Putter';
-  const reach = CLUBS.filter(([, y]) => y && y >= d - 5);            // a few yards short is fine
-  return (reach.length ? reach[reach.length - 1] : CLUBS[0])[0];
+  const reach = B.filter(([, y]) => y && y >= d - 5);                // a few yards short is fine
+  return (reach.length ? reach[reach.length - 1] : B[0])[0];
 }
 function showClub(d, onGreen){
-  const box = $('#clubBox');
+  const box = $('#clubBox'), B = bag();
   if (d == null){ box.hidden = true; clubMenu(false); return; }
-  if (clubPick && (!clubPickAt || !me || distM(clubPickAt, me) > 14)) clubPick = null;   // you moved: back to the suggestion
-  const sug = suggestClub(d, onGreen), name = clubPick || sug, y = CLUBS.find(c => c[0] === name)[1];
+  if (clubPick && (!clubPickAt || !me || distM(clubPickAt, me) > 14 || !B.some(c => c[0] === clubPick))) clubPick = null;   // you moved: back to the suggestion
+  const sug = suggestClub(d, onGreen), name = clubPick || sug, y = B.find(c => c[0] === name)[1];
   clubNow = { name, sug, d };
   $('#clubTag').textContent = clubPick && clubPick !== sug ? 'Your pick' : 'Suggested';
   $('#clubName').textContent = name;
@@ -1172,13 +1199,35 @@ function clubMenu(open){
   const menu = $('#clubMenu'); menu.hidden = !open; $('#clubBtn').setAttribute('aria-expanded', open);
   if (!open || !clubNow) return;
   menu.innerHTML = '';
-  CLUBS.forEach(([n, y]) => { const b = document.createElement('button'); b.setAttribute('role', 'option');
+  bag().forEach(([n, y]) => { const b = document.createElement('button'); b.setAttribute('role', 'option');
     b.setAttribute('aria-selected', n === clubNow.name);
     b.innerHTML = `${esc(n)}${n === clubNow.sug ? ' ★' : ''}<span>${y ? y + ' yds' : 'on the green'}</span>`;
     b.onclick = e => { e.stopPropagation(); clubPick = n === clubNow.sug ? null : n; clubPickAt = me; clubMenu(false); drawLive(); };
     menu.appendChild(b); });
+  const ed = document.createElement('button'); ed.className = 'edit'; ed.textContent = 'My clubs: set my distances…';
+  ed.onclick = e => { e.stopPropagation(); clubMenu(false); openClubSheet(); };
+  menu.appendChild(ed);
   menu.querySelector('[aria-selected="true"]')?.scrollIntoView({ block:'nearest' });
 }
+/* "My clubs": how far you hit each club, and which ones are in your bag */
+function openClubSheet(){
+  const list = $('#clubList'); list.innerHTML = '';
+  CLUBS.filter(([n]) => n !== 'Putter').forEach(([n, typ]) => {
+    const row = document.createElement('label'); row.className = 'clubrow';
+    row.innerHTML = `<input type="checkbox" ${myClubs[n]?.off ? '' : 'checked'} aria-label="${esc(n)} is in my bag"><span>${esc(n)}</span>`
+      + `<input type="number" inputmode="numeric" min="1" max="400" placeholder="${typ}" value="${myClubs[n]?.y || ''}" aria-label="${esc(n)} yards"><small>yds</small>`;
+    const [on, yds] = row.querySelectorAll('input');
+    const save = () => { const y = Math.round(+yds.value);
+      myClubs[n] = { ...(y > 0 && y <= 400 ? { y } : {}), ...(on.checked ? {} : { off:true }) };
+      if (!Object.keys(myClubs[n]).length) delete myClubs[n];
+      row.classList.toggle('off', !on.checked); saveClubs(); drawLive(); };
+    on.onchange = save; yds.oninput = save; row.classList.toggle('off', !on.checked);
+    list.appendChild(row); });
+  $('#clubSheet').hidden = false;
+}
+$('#clubDone').onclick = () => { $('#clubSheet').hidden = true; drawLive(); };
+$('#clubReset').onclick = () => { if (!confirm('Go back to the typical distances, with every club in the bag?')) return;
+  myClubs = {}; saveClubs(); openClubSheet(); drawLive(); };
 $('#clubBtn').onclick = e => { e.stopPropagation(); clubMenu($('#clubMenu').hidden); };
 document.addEventListener('click', e => { if (!$('#clubMenu').hidden && !e.target.closest('#clubBox')) clubMenu(false); });
 /* a new hole starts you on its tee (the one for the tee color you're playing), until real GPS takes over */
