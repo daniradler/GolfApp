@@ -229,8 +229,12 @@ input::placeholder{color:var(--mist);opacity:.7}
 .leaflet-top,.leaflet-bottom{position:absolute;z-index:1000;pointer-events:none}
 .leaflet-bottom{bottom:0}.leaflet-right{right:0}
 .leaflet-control{position:relative;pointer-events:auto}
-.leaflet-control-attribution{background:rgba(7,28,51,.7);color:var(--mist);font-size:10px;padding:2px 6px;margin-bottom:calc(150px + env(safe-area-inset-bottom,0px))}
-.leaflet-control-attribution a{color:var(--mist)}
+.leaflet-control-attribution{background:none;color:rgba(234,243,255,.55);font-size:8px;line-height:1.2;padding:0 6px;text-shadow:0 0 3px rgba(0,0,0,.9);
+  margin-bottom:calc(150px + env(safe-area-inset-bottom,0px))}        /* the map credits the imagery/data licences require: kept, but small and quiet */
+.leaflet-control-attribution a{color:inherit;text-decoration:none}
+.recenter{position:absolute;z-index:1150;left:50%;bottom:100px;width:44px;height:44px;margin-left:-22px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+  background:var(--panel);color:var(--play);border:1px solid var(--line);box-shadow:0 4px 14px rgba(0,0,0,.35)}
+.recenter svg{width:22px;height:22px}
 
 .picker{gap:20px;padding-block:28px 28px}
 /* start screen: play or map */
@@ -332,6 +336,11 @@ input::placeholder{color:var(--mist);opacity:.7}
   </div>
   <div class="tees" id="teeRow" role="group" aria-label="Tees" hidden></div>
   <button class="play start-round" id="startRound">Start round</button>
+  <!-- round: only shows when the map has drifted off your location; tap to centre on you -->
+  <button class="recenter" id="recenter" hidden aria-label="Centre the map on my location">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4" fill="currentColor"/><circle cx="12" cy="12" r="7.5" fill="none" stroke="currentColor" stroke-width="2"/>
+      <path d="M12 1.5v3M12 19.5v3M1.5 12h3M19.5 12h3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+  </button>
   <!-- round: "Hey Caddy" voice. Tap to turn listening on or off (mute) -->
   <button class="caddy" id="caddyBtn" hidden aria-pressed="false" aria-label="Hey Caddy voice">
     <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3" fill="currentColor"/><path d="M6 11a6 6 0 0 0 12 0M12 17v4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
@@ -1113,18 +1122,21 @@ function openMap(k){
         rotate:!!L.Map.prototype.setBearing, rotateControl:false, touchRotate:false, shiftKeyRotate:false, compassBearing:false }).setView(k.center, k.zoom);
       baseLayers = {
         sat: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-          { maxZoom:20, maxNativeZoom:19, attribution:'Imagery © Esri, Maxar · Course data © OpenStreetMap contributors' }),
+          { maxZoom:20, maxNativeZoom:19, attribution:'Imagery © Esri, Maxar · Data © OpenStreetMap contributors' }),
         map: L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',
           { maxZoom:20, maxNativeZoom:19, attribution:'© OpenStreetMap contributors' })
       };
       Object.values(baseLayers).forEach(l => l.on('tileload', () => { tilesOk = true; }));
+      map.attributionControl.setPrefix(false);       // "Leaflet" credit is optional; Esri/OpenStreetMap credits are required and stay
       setBase(baseName);
       map.on('move', updateReadout);
+      map.on('move', checkAligned);
+      map.on('moveend', () => { if (!userGesture) markAligned(); });
       map.on('moveend', () => { if (mode === 'round' && spot) drawLive(); });   // re-pick the side for the spot's numbers
       map.on('dragstart', () => { if (mapper) mapper.userMoved = true; });
       map.on('moveend', keepInBubble);
       /* once you touch the map, data arriving in the background doesn't re-frame it (until you change hole / screen) */
-      ['pointerdown', 'wheel', 'touchstart'].forEach(ev => map.getContainer().addEventListener(ev, () => { userTouched = true; }, { passive:true }));
+      ['pointerdown', 'wheel', 'touchstart'].forEach(ev => map.getContainer().addEventListener(ev, () => { userTouched = userGesture = true; }, { passive:true }));
       map.on('click', e => { if (mode !== 'round') return;
         const p = [e.latlng.lat, e.latlng.lng];
         if (placing){ placing = false; me = p; meAcc = 0; manualMe = true; return renderHole(false); }   // you picked where you are
@@ -1145,9 +1157,20 @@ function openMap(k){
   loadCourseMap(k).then(() => { if (course === k && mode === 'mapping' && mapper && !mapper.dirty && !Object.keys(mapper.tees || {}).length) mapperGoto(firstUnmapped()); });
 }
 let userTouched = false;
+/* ---------- re-centre button: shows once the map no longer lines up with you (you moved the map, or you walked on) ---------- */
+let userGesture = false, alignedAt = null;          // where your dot sat on screen the last time the app placed the map
+function markAligned(){ alignedAt = me && map ? map.latLngToContainerPoint(me) : null; checkAligned(); }
+function checkAligned(){
+  const b = $('#recenter');
+  if (mode !== 'round' || !me || !map || (bubble && bubble.c.distanceTo(me) > bubble.r)){ b.hidden = true; return; }   // far from the course: nothing to centre on
+  const p = map.latLngToContainerPoint(me);
+  b.hidden = !!alignedAt && p.distanceTo(alignedAt) < 40;
+  b.style.bottom = ($('#holeCard').offsetHeight + 8) + 'px';
+}
+$('#recenter').onclick = () => { userGesture = false; map.flyTo(me, map.getZoom(), { duration:.5 }); };
 function setMode(m){
-  mode = m; userTouched = false; const r = m === 'round', mp = m === 'mapping';
-  $('#holeCard').hidden = $('#holeTop').hidden = !r; if (!r){ $('#clubBox').hidden = $('#clubSheet').hidden = true; clubMenu(false); caddyOff(); } $('#caddyBtn').hidden = !r; $('#mapScreen').classList.toggle('round', r);
+  mode = m; userTouched = userGesture = false; const r = m === 'round', mp = m === 'mapping';
+  $('#holeCard').hidden = $('#holeTop').hidden = !r; if (!r){ $('#clubBox').hidden = $('#clubSheet').hidden = true; clubMenu(false); caddyOff(); $('#recenter').hidden = true; } $('#caddyBtn').hidden = !r; $('#mapScreen').classList.toggle('round', r);
   if (!r) placing = false;
   $('#startRound').hidden = r || mp; $('#endRound').hidden = !r; $('#mapBack').hidden = r;
   $('#mapCard').hidden = !mp; $('#mapDone').hidden = !mp; $('#crosshair').hidden = !mp;
@@ -1343,6 +1366,7 @@ function greenTargets(){
   return info.green || {};
 }
 function drawLive(){
+  checkAligned();
   if (mode !== 'round' || !course) return;
   const g = greenTargets(), far = me && g.mid && yd(me, g.mid) > 1500;
   $('#setMe').setAttribute('aria-pressed', placing);
@@ -1386,6 +1410,7 @@ function labelLeft(pt, route){
 }
 
 function renderHole(fly = true){
+  if (fly) userGesture = false;                     // the app frames the hole: that view counts as lined up with you
   const n = hole, info = holeInfo(n), mine = info.oh?.mapped, pin = !mine && (greens[course.id] || {})[n], gp = info.green?.poly;
   $('#pinGreen').hidden = !!mine;                    // your own map has the green; change it in Map a course
   $('#holeNum').textContent = $('#holeTopNum').textContent = 'Hole ' + n;
@@ -1885,8 +1910,8 @@ function updateReadout(){
   el.textContent = t; el.hidden = !t;
 }
 
-$('#holePrev').onclick = () => { const c = holeCount(); hole = hole > 1 ? hole-1 : c; pinning = false; spot = null; meToTee(); userTouched = false; renderHole(); };
-$('#holeNext').onclick = () => { const c = holeCount(); hole = hole < c ? hole+1 : 1; pinning = false; spot = null; meToTee(); userTouched = false; renderHole(); };
+$('#holePrev').onclick = () => { const c = holeCount(); hole = hole > 1 ? hole-1 : c; pinning = false; spot = null; meToTee(); userTouched = userGesture = false; renderHole(); };
+$('#holeNext').onclick = () => { const c = holeCount(); hole = hole < c ? hole+1 : 1; pinning = false; spot = null; meToTee(); userTouched = userGesture = false; renderHole(); };
 $('#pinGreen').onclick = () => { pinning = !pinning; placing = false; renderHole(false); };
 /* ---------- spoken yardage: the phone's own voice (free, works without signal) ---------- */
 let voice = null;

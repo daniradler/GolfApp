@@ -73,6 +73,16 @@ saying something works.
    on the container) sets `userTouched`; while set, `render()` (data arriving in
    the background) doesn't fly the hole/overview. Reset by `setMode` and the hole
    arrows. Pinning a green no longer re-frames.
+   **Re-centre button** (`#recenter`, small round button bottom centre between
+   Caddy and the club box, round only): `alignedAt` = your dot's screen spot after
+   the app last placed the map (`markAligned()` on `moveend` unless `userGesture`,
+   set by touching the map, cleared by `renderHole(fly)`/hole arrows/the button).
+   `checkAligned()` (on `move` and in `drawLive()`) shows it once your dot is 40+ px
+   from there (you moved the map or walked on); hidden with no location or when
+   you're outside the bubble. Tap → `flyTo(me)` at the same zoom and turn.
+   **Map credits** (Leaflet attribution): required for Esri imagery and
+   OpenStreetMap data, so kept — but 8 px, no box, faded, "Leaflet" prefix off
+   (`setPrefix(false)`).
 2. **Course overview**: full-screen satellite map fitted to the whole course,
    all mapped holes numbered, tee picker chips, big **Start round** button at
    75% of screen height. ‹ goes back to course list.
