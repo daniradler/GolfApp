@@ -133,6 +133,11 @@ saying something works.
      set), cleared by End round. Start round and each hole change put you on
      that hole's tee (`meToTee()`, the tee color you're playing); a hole with no
      tee on the map clears it. Real GPS (`me` set, not manual) is left alone. `placing` = waiting for the tap.
+     The tee marker is a stand-in (`autoMe`): the first GPS fix with accuracy
+     ≤100 m that's at the course (inside the bubble; before data, within 3 km)
+     replaces it (`manualMe = autoMe = false`, hole re-framed unless you've
+     touched the map). At home you stay on the tee. A spot you picked with
+     Set my location (`autoMe` false) still wins over GPS.
    - GPS (`startGPS()` on Start round, `stopGPS()` on End round / back):
      `watchPosition`, blue dot + accuracy circle on the map. Your own green pin
      replaces the mapped green and gives a middle number only. Over 1500 yds

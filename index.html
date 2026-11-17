@@ -1141,7 +1141,7 @@ function openMap(k){
       ['pointerdown', 'wheel', 'touchstart'].forEach(ev => map.getContainer().addEventListener(ev, () => { userTouched = userGesture = true; }, { passive:true }));
       map.on('click', e => { if (mode !== 'round') return;
         const p = [e.latlng.lat, e.latlng.lng];
-        if (placing){ placing = false; me = p; meAcc = 0; manualMe = true; return renderHole(false); }   // you picked where you are
+        if (placing){ placing = false; me = p; meAcc = 0; manualMe = true; autoMe = false; return renderHole(false); }   // you picked where you are: wins over GPS
         if (!pinning){                                      // any other tap marks a spot to measure; tapping the spot again clears it
           spot = spot && map.latLngToContainerPoint(spot).distanceTo(e.containerPoint) < 24 ? null : p; return drawLive(); }
         (greens[course.id] ||= {})[hole] = p; saveGreens();
@@ -1333,21 +1333,30 @@ document.addEventListener('click', e => { if (!$('#clubMenu').hidden && !e.targe
 function meToTee(){
   if (me && !manualMe) return;
   const t = holeInfo(hole).oh?.line[0];
-  if (t){ me = t; meAcc = 0; manualMe = true; }
-  else { me = null; manualMe = false; }             // no tee on the map: set your location yourself
+  if (t){ me = t; meAcc = 0; manualMe = autoMe = true; }   // a stand-in: real GPS at the course replaces it
+  else { me = null; manualMe = autoMe = false; }    // no tee on the map: GPS or set your location yourself
 }
 function endRound(){ stopGPS(); setMode('overview'); }
 
 /* ---------- live GPS: yards from you to the green, and to a spot you tap ---------- */
 /* until GPS works on the phone, you can tap "Set my location" and then tap the map; that spot stands in for GPS */
-let me = null, meAcc = 0, gpsWatch = null, gpsErr = null, spot = null, liveLayer, manualMe = false, placing = false;
+let me = null, meAcc = 0, gpsWatch = null, gpsErr = null, spot = null, liveLayer, manualMe = false, autoMe = false, placing = false;
 function startGPS(){
   if (gpsWatch != null) return;
   if (!navigator.geolocation){ gpsErr = 'none'; return; }
   gpsErr = null;
   gpsWatch = navigator.geolocation.watchPosition(
-    p => { gpsErr = null; if (manualMe) return;          // the spot you picked wins over GPS for now
-      me = [p.coords.latitude, p.coords.longitude]; meAcc = p.coords.accuracy || 0; drawLive();
+    p => { gpsErr = null;
+      const fix = [p.coords.latitude, p.coords.longitude], acc = p.coords.accuracy || 0;
+      /* the tee marker the app put you on gives way to real GPS once a good fix says you're at the course
+         (inside the bubble, or within 3 km before course data has loaded); a spot you picked yourself still wins */
+      if (manualMe){
+        const atCourse = bubble ? bubble.c.distanceTo(fix) <= bubble.r : !!course && distM(fix, course.center) < 3000;
+        if (!autoMe || !atCourse || acc > 100) return;
+        manualMe = autoMe = false; me = fix; meAcc = acc;
+        if (mode === 'round') return renderHole(!userTouched);   // frame the hole from where you really are
+      }
+      me = fix; meAcc = acc; drawLive();
       /* mapping: offer "I'm on the tee" once you're at the course */
       const on = !!course && distM(me, course.center) < 3000;
       if (mode === 'mapping' && mapper?.step === 'tee' && mapper.onCourse !== on){ mapper.onCourse = on; renderMapperButtons(); } },
@@ -1356,7 +1365,7 @@ function startGPS(){
 }
 function stopGPS(){
   if (gpsWatch != null) navigator.geolocation.clearWatch(gpsWatch);
-  gpsWatch = null; me = null; manualMe = placing = false; spot = null; liveLayer?.remove(); liveLayer = null;
+  gpsWatch = null; me = null; manualMe = autoMe = placing = false; spot = null; liveLayer?.remove(); liveLayer = null;
 }
 const yd = (a, b) => Math.round(distM(a, b) * M2YD);
 /* yards up close; miles when you're nowhere near (e.g. checking a course from home) */
