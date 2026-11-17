@@ -81,8 +81,9 @@ saying something works.
    from there (you moved the map or walked on); hidden with no location or when
    you're outside the bubble. Tap → `flyTo(me)` at the same zoom and turn.
    **Map credits** (Leaflet attribution): required for Esri imagery and
-   OpenStreetMap data, so kept — but 8 px, no box, faded, "Leaflet" prefix off
-   (`setPrefix(false)`).
+   OpenStreetMap data, so kept — but 6.5 px, no box, faded, centred at the very
+   bottom in the 12 px gap under the bottom card (`.leaflet-bottom.leaflet-right`
+   stretched full width), "Leaflet" prefix off (`setPrefix(false)`).
 2. **Course overview**: full-screen satellite map fitted to the whole course,
    all mapped holes numbered, tee picker chips, big **Start round** button at
    75% of screen height. ‹ goes back to course list.

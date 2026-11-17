@@ -229,8 +229,10 @@ input::placeholder{color:var(--mist);opacity:.7}
 .leaflet-top,.leaflet-bottom{position:absolute;z-index:1000;pointer-events:none}
 .leaflet-bottom{bottom:0}.leaflet-right{right:0}
 .leaflet-control{position:relative;pointer-events:auto}
-.leaflet-control-attribution{background:none;color:rgba(234,243,255,.55);font-size:8px;line-height:1.2;padding:0 6px;text-shadow:0 0 3px rgba(0,0,0,.9);
-  margin-bottom:calc(150px + env(safe-area-inset-bottom,0px))}        /* the map credits the imagery/data licences require: kept, but small and quiet */
+/* the map credits the imagery/data licences require: kept, but tiny, centred at the very bottom, in the 12px gap under the bottom card */
+.leaflet-bottom.leaflet-right{left:0;right:0;display:flex;justify-content:center;pointer-events:none}
+.leaflet-control-attribution{background:none;color:rgba(234,243,255,.5);font-size:6.5px;line-height:1;padding:0 6px;text-shadow:0 0 2px rgba(0,0,0,.9);
+  margin:0 0 calc(2px + env(safe-area-inset-bottom,0px)) !important;white-space:nowrap}
 .leaflet-control-attribution a{color:inherit;text-decoration:none}
 .recenter{position:absolute;z-index:1150;left:50%;bottom:100px;width:44px;height:44px;margin-left:-22px;border-radius:50%;display:flex;align-items:center;justify-content:center;
   background:var(--panel);color:var(--play);border:1px solid var(--line);box-shadow:0 4px 14px rgba(0,0,0,.35)}
