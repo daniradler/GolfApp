@@ -99,6 +99,11 @@ input::placeholder{color:var(--mist);opacity:.7}
 .holecard.compact .pinrow{align-items:center}
 .holecard.compact .num{flex:0 0 auto;font-family:var(--display);font-weight:800;font-size:22px;letter-spacing:.03em;text-transform:uppercase;padding:0 4px}
 .holecard.compact .pinbtn{padding:9px 8px;font-size:14px}
+.pinbtn.shot{flex:0 0 auto;background:var(--play);color:var(--play-ink);border-color:var(--play);font-weight:800;padding-left:12px;padding-right:12px}
+.pinbtn.shot:disabled{opacity:.45}
+.toast{position:absolute;z-index:1200;left:50%;transform:translateX(-50%);bottom:170px;background:var(--panel);color:var(--ink);border:1px solid var(--play);
+  border-radius:12px;padding:8px 14px;font-weight:700;font-size:15px;box-shadow:0 4px 14px rgba(0,0,0,.4);white-space:nowrap;pointer-events:none}
+.clubrow em{font-style:normal;font-size:12px;color:var(--play);background:none;border:1px solid var(--line);border-radius:8px;padding:3px 6px;white-space:nowrap}
 .caddy{position:absolute;z-index:1150;left:max(12px,env(safe-area-inset-left,0px));bottom:100px;display:flex;align-items:center;gap:8px;
   background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:14px;padding:8px 12px 8px 10px;box-shadow:0 4px 14px rgba(0,0,0,.35);text-align:left}
 .caddy svg{width:26px;height:26px;flex:0 0 auto}
@@ -357,13 +362,15 @@ input::placeholder{color:var(--mist);opacity:.7}
   <!-- My clubs: your own distance for each club -->
   <div class="clubsheet" id="clubSheet" hidden role="dialog" aria-labelledby="clubSheetTitle"><div class="clubsheet-in">
     <h3 id="clubSheetTitle">My clubs</h3>
-    <p class="hint">How far you carry each club. Leave a box empty to use the number shown. Untick clubs that aren't in your bag.</p>
+    <p class="hint">How far you carry each club. Once a club has 3 tracked shots (Mark ball in a round), your average is used — tap it to clear those shots. Until then, the number in the box (or the one shown). Untick clubs that aren't in your bag.</p>
     <div class="clublist" id="clubList"></div>
     <div class="mrow"><button id="clubReset">Reset</button><button class="go" id="clubDone">Done</button></div>
   </div></div>
+  <div class="toast" id="toast" role="status" hidden></div>
   <div class="holecard compact" id="holeCard" hidden><div class="holecard-in">
     <div class="pinrow">
       <div class="num" id="holeNum">Hole 1</div>
+      <button class="pinbtn shot" id="shotBtn">Mark ball</button>
       <button class="pinbtn" id="setMe" aria-pressed="false">Set my location</button>
       <button class="pinbtn" id="pinGreen" aria-pressed="false">Pin the green</button>
     </div>
@@ -1259,8 +1266,38 @@ const CLUBS = [['Driver', 230], ['3 Wood', 215], ['5 Wood', 200], ['Hybrid', 190
 const CKEY = 'caddie-voice-clubs';
 let myClubs = (() => { try { return JSON.parse(localStorage.getItem(CKEY)) || {}; } catch { return {}; } })();
 const saveClubs = () => { try { localStorage.setItem(CKEY, JSON.stringify(myClubs)); } catch {} };
+/* ---------- shot tracking: every shot you mark is saved; 3+ shots with a club → its average replaces the typed number ----------
+   caddie-voice-shots: [{c: club, y: yards, t: time, k: course id, h: hole, m: 1 if your location was set by hand}] */
+const SKEY = 'caddie-voice-shots', MIN_SHOTS = 3;
+let shots = (() => { try { return JSON.parse(localStorage.getItem(SKEY)) || []; } catch { return []; } })();
+const saveShots = () => { try { localStorage.setItem(SKEY, JSON.stringify(shots.slice(-2000))); } catch {} };
+/* average of your last 20 shots with a club, ignoring the longest and shortest 10% (a topped or flushed one shouldn't swing it) */
+function clubAvg(n){
+  const ys = shots.filter(s => s.c === n).slice(-20).map(s => s.y).sort((a, b) => a - b);
+  if (ys.length < MIN_SHOTS) return ys.length ? { avg:null, n:ys.length } : null;
+  const cut = Math.floor(ys.length * .1), mid = ys.slice(cut, ys.length - cut);
+  return { avg: Math.round(mid.reduce((a, b) => a + b, 0) / mid.length), n: ys.length };
+}
+/* the club follows the club box until you've walked 14 m from where you marked the ball (you've hit it) */
+let pendingShot = null;                              // { from, club, hole, locked, m }
+function markBall(){
+  if (!me || mode !== 'round') return;
+  const onGreen = clubNow?.name === 'Putter';
+  if (pendingShot && pendingShot.hole === hole){
+    const y = yd(pendingShot.from, me), c = pendingShot.club;
+    if (pendingShot.locked && c && c !== 'Putter' && y >= 10 && y <= 400){
+      shots.push({ c, y, t: Date.now(), k: course.id, h: hole, ...(pendingShot.m || manualMe ? { m:1 } : {}) }); saveShots();
+      const a = clubAvg(c);
+      toast(`${c}: ${y} yds saved` + (a?.avg ? ` · avg ${a.avg}` : ` · ${a.n} of ${MIN_SHOTS} for an average`));
+    } else if (!pendingShot.locked) toast('Ball marked again');
+  } else toast(onGreen ? 'On the green — nice' : 'Ball marked · hit, then mark your next ball');
+  pendingShot = onGreen ? null : { from: me.slice(), club: clubNow?.name || null, hole, locked:false, m: manualMe };
+  drawLive();
+}
+let toastT = null;
+function toast(t){ const el = $('#toast'); el.textContent = t; el.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => { el.hidden = true; }, 2600); }
 /* the clubs in your bag with your yards, longest first (putter last) */
-const bag = () => CLUBS.map(([n, y]) => [n, n === 'Putter' ? 0 : myClubs[n]?.y || y]).filter(([n]) => n === 'Putter' || !myClubs[n]?.off)
+const bag = () => CLUBS.map(([n, y]) => [n, n === 'Putter' ? 0 : clubAvg(n)?.avg || myClubs[n]?.y || y]).filter(([n]) => n === 'Putter' || !myClubs[n]?.off)
   .sort((a, b) => (b[1] || -1) - (a[1] || -1));
 let clubPick = null, clubPickAt = null, clubNow = null;   // the club you chose, where you were when you chose it, and what's shown
 function suggestClub(d, onGreen){
@@ -1312,8 +1349,9 @@ function clubMenu(open){
 function openClubSheet(){
   const list = $('#clubList'); list.innerHTML = '';
   CLUBS.filter(([n]) => n !== 'Putter').forEach(([n, typ]) => {
-    const row = document.createElement('label'); row.className = 'clubrow';
+    const row = document.createElement('label'); row.className = 'clubrow'; const a = clubAvg(n);
     row.innerHTML = `<input type="checkbox" ${myClubs[n]?.off ? '' : 'checked'} aria-label="${esc(n)} is in my bag"><span>${esc(n)}</span>`
+      + (a ? `<em role="button" tabindex="0" title="Tap to clear these shots">${a.avg ? `avg ${a.avg} · ${a.n} shots` : `${a.n} of ${MIN_SHOTS} shots`}</em>` : '')
       + `<input type="number" inputmode="numeric" min="1" max="400" placeholder="${typ}" value="${myClubs[n]?.y || ''}" aria-label="${esc(n)} yards"><small>yds</small>`;
     const [on, yds] = row.querySelectorAll('input');
     const save = () => { const y = Math.round(+yds.value);
@@ -1321,6 +1359,10 @@ function openClubSheet(){
       if (!Object.keys(myClubs[n]).length) delete myClubs[n];
       row.classList.toggle('off', !on.checked); saveClubs(); drawLive(); };
     on.onchange = save; yds.oninput = save; row.classList.toggle('off', !on.checked);
+    const em = row.querySelector('em');
+    if (em) em.onclick = e => { e.preventDefault(); e.stopPropagation();
+      if (!confirm(`Forget your ${a.n} tracked shot${a.n > 1 ? 's' : ''} with the ${n}?`)) return;
+      shots = shots.filter(s => s.c !== n); saveShots(); openClubSheet(); drawLive(); };
     list.appendChild(row); });
   $('#clubSheet').hidden = false;
 }
@@ -1336,7 +1378,7 @@ function meToTee(){
   if (t){ me = t; meAcc = 0; manualMe = autoMe = true; }   // a stand-in: real GPS at the course replaces it
   else { me = null; manualMe = autoMe = false; }    // no tee on the map: GPS or set your location yourself
 }
-function endRound(){ stopGPS(); setMode('overview'); }
+function endRound(){ pendingShot = null; stopGPS(); setMode('overview'); }
 
 /* ---------- live GPS: yards from you to the green, and to a spot you tap ---------- */
 /* until GPS works on the phone, you can tap "Set my location" and then tap the map; that spot stands in for GPS */
@@ -1382,6 +1424,9 @@ function drawLive(){
   const g = greenTargets(), far = me && g.mid && yd(me, g.mid) > 1500;
   $('#setMe').setAttribute('aria-pressed', placing);
   $('#setMe').textContent = placing ? 'Tap where you are…' : manualMe ? 'Move my location' : 'Set my location';
+  if (pendingShot && (pendingShot.hole !== hole)) pendingShot = null;          // changed hole: that shot's end is unknown
+  if (pendingShot && !pendingShot.locked && me && distM(pendingShot.from, me) > 14) pendingShot.locked = true;   // you've hit it and walked on
+  $('#shotBtn').disabled = !me;
   if (!map) return;
   liveLayer?.remove(); liveLayer = L.layerGroup().addTo(map);
   if (me){
@@ -1399,6 +1444,16 @@ function drawLive(){
     L.polyline(route, { color:'#4FB3FF', weight:4, interactive:false }).addTo(liveLayer);
   }
   showClub(me && g.mid && !far ? yd(me, g.mid) : null, !!(me && info.green?.poly && inPoly(me, info.green.poly)));
+  if (pendingShot && !pendingShot.locked && clubNow) pendingShot.club = clubNow.name;   // still at the ball: whatever club the box shows
+  if (pendingShot && me){                            // the shot in progress: dotted line from where you hit, with the yards so far
+    L.circleMarker(pendingShot.from, { radius:5, color:'#04182C', weight:2, fillColor:'#FFD54F', fillOpacity:1, interactive:false }).addTo(liveLayer);
+    if (pendingShot.locked){
+      L.polyline([pendingShot.from, me], { color:'#FFD54F', weight:3, dashArray:'2 7', lineCap:'round', interactive:false }).addTo(liveLayer);
+      const mid = [(pendingShot.from[0] + me[0]) / 2, (pendingShot.from[1] + me[1]) / 2];
+      L.marker(mid, { icon:L.divIcon({ className:'spot-tag' + (labelLeft(mid, route) ? ' left' : ''), html:`<span>${esc(pendingShot.club || 'Shot')} · ${yd(pendingShot.from, me)}</span>`, iconSize:[0,0] }),
+        interactive:false, keyboard:false }).addTo(liveLayer);
+    }
+  }
   if (spot){
     const line = { color:'#FFFFFF', weight:3, dashArray:'2 8', lineCap:'round', interactive:false };
     if (me && !far) L.polyline([me, spot], line).addTo(liveLayer);
@@ -2050,6 +2105,7 @@ $('#caddyBtn').onclick = () => {
   caddyOn = true; caddyState();
   speak('Caddy is on. Say hey caddy, then ask.');
 };
+$('#shotBtn').onclick = markBall;
 $('#setMe').onclick = () => { placing = !placing; pinning = false; renderHole(false); };
 $('#osmRetry').onclick = () => course && loadOSM(course, true);
 $('#osmClose').onclick = () => { $('#osmStatus').hidden = true; };

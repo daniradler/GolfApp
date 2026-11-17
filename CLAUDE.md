@@ -113,6 +113,19 @@ saying something works.
      (`#clubSheet`, `openClubSheet()`): yards per club (empty = typical number)
      and a tick for "in my bag"; saved as you type in `caddie-voice-clubs`
      `{club:{y, off}}`; `bag()` = your clubs with your yards, longest first.
+   - **Shot tracking** (`#shotBtn` "Mark ball", first button in the card; `markBall()`):
+     tap where your ball is (tee, each ball after you hit, ball on the green).
+     Each tap ends the previous shot (`pendingShot` → saved if the club isn't the
+     putter, 10–400 yds, and you'd walked 14+ m from it) and starts the next one,
+     except on the green (club box = Putter), which only ends it. The shot's club
+     follows the club box until you walk 14 m from where you marked (`locked`).
+     Yellow dot at the start + yellow dotted line to you labeled "<club> · yds".
+     Changing hole / End round drops an unfinished shot. `toast()` confirms.
+     Saved in `caddie-voice-shots` `[{c, y, t, k, h, m}]` (m = location set by hand).
+     **Averages** (`clubAvg()`): last 20 shots of a club, longest/shortest 10%
+     dropped; from 3 shots (`MIN_SHOTS`) the average replaces your typed number
+     in `bag()` (so club suggestion, menu, AI caddy all use it). My clubs shows
+     "avg N · n shots" / "n of 3 shots"; tapping it clears that club's shots.
    - **Hey Caddy** (`#caddyBtn`, bottom left, same height as the club box; on/off =
      mute): `SpeechRecognition` (continuous, restarted on `onend`, stopped while
      speaking so it doesn't hear itself). `heard()` looks for the wake words
@@ -285,7 +298,7 @@ the hole line (`greenFor()`).
 OpenGolfAPI scorecard · `caddie-voice-osm2-{id}` Overpass result (30-day
 cache) · `caddie-voice-geo` Nominatim lookups · `caddie-voice-greens` user
 green pins `{courseId:{hole:[lat,lng]}}` · `caddie-voice-tee-{courseId}`
-chosen tee · `caddie-voice-clubs` My clubs yards / in-bag · `caddie-voice-maps` your course maps (backup of / stand-in for
+chosen tee · `caddie-voice-clubs` My clubs yards / in-bag · `caddie-voice-shots` tracked shots · `caddie-voice-maps` your course maps (backup of / stand-in for
 GolfCourseMaps files) · `caddie-voice-hidden` (legacy, mostly unused).
 
 Wrap every localStorage access in try/catch (already the pattern).
@@ -305,10 +318,8 @@ a real bug once).
 1. **Spoken yardage** — "Hey Caddy" and the AI caddy are built (see App flow and
    Data sources). Still possible: earbud/watch media button via the Media
    Session API; follow-up questions (the AI caddy has no memory between questions).
-2. Shot tracking (mark shot → walk to ball → distance) and **per-club averages**:
-   the owner wants the app to work out each player's average distance per club
-   once GPS works; those averages should fill in My clubs automatically (typed
-   numbers stay as a fallback).
+2. Shot tracking and per-club averages are built (see App flow). Still possible:
+   a shot history screen, shots on the map after the round, pin-today marker.
 3. Mapper extras: carry distances to hazards in a
    round, sharing maps between players without going through GitHub.
 4. **Native apps** for background GPS and a tap-to-speak watch button:
