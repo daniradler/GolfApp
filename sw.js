@@ -6,7 +6,7 @@
    - Hand-made course maps (GolfCourseMaps/): newest when online, saved copy offline.
    - Course search and map data are NOT handled here; the app already saves those itself.
    Bump VERSION whenever this file changes. */
-const VERSION = 'v4';
+const VERSION = 'v5';
 const SHELL = `cv-shell-${VERSION}`, TILES = 'cv-tiles', MAX_TILES = 1500;
 const SHELL_FILES = ['./', './index.html', './manifest.webmanifest',
   './icons/icon-192.png', './icons/icon-512.png', './icons/apple-touch-icon.png', './icons/favicon-64.png'];
