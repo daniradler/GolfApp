@@ -103,7 +103,7 @@ saying something works.
    **Pin the green** (hidden on mapped holes). No front/middle/back numbers and no hint text any more.
    **End round** (top right) returns to overview.
    - **Club suggestion** (`#clubBox`, app-blue `--panel` box, bottom right above the card; `showClub()`
-     from `drawLive()`): `CLUBS[]` = generic carry yards (Driver 230 … L Wedge 70,
+     from `drawLive()`): `CLUBS[]` = generic carry yards (Driver 230 … P Wedge 120, A Wedge 110, 54° 95, S Wedge 90, 58° 80, 60° 70,
      Putter); suggestion = shortest club whose carry ≥ yards to the middle of the
      green − 5 (Driver if nothing reaches, Putter when you're on the green
      polygon). Tap → menu (`clubMenu()`, ★ = suggested; same 140 px width as the

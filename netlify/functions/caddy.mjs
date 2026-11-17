@@ -31,7 +31,7 @@ function json(body, status){
 /* the round info the phone sends, cut down to known fields so nothing else reaches the prompt */
 export function roundText(r){
   if (!r || typeof r !== 'object') return 'No round information.';
-  const n = v => (Number.isFinite(+v) ? Math.round(+v) : null), s = v => String(v ?? '').replace(/[^\w .,'()/-]/g, '').slice(0, 60);
+  const n = v => (Number.isFinite(+v) ? Math.round(+v) : null), s = v => String(v ?? '').replace(/[^\w .,'()/°-]/g, '').slice(0, 60);
   const L = [];
   if (r.course) L.push(`Course: ${s(r.course)}`);
   if (n(r.hole)) L.push(`Hole ${n(r.hole)}` + (n(r.par) ? `, par ${n(r.par)}` : '') + (n(r.yards) ? `, ${n(r.yards)} yards` : '')
