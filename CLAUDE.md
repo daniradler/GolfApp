@@ -63,9 +63,16 @@ saying something works.
    "bethpage black" → "Black at Bethpage". Nominatim results are merged in when
    no result matches every word.
    **Map lock** (`lockToCourse()`, from `render()`/`fitCourse()`/`openMap`): min zoom
-   = the overview's fit of the whole course (`coursePts()`, same padding `FIT()`),
-   max bounds = course box padded 50% (no data yet: 1.2 km around the center);
-   `unlockMap()` before jumping to another course. Works on the turned map.
+   = the overview's fit of the whole course (`coursePts()`, same padding `FIT()`);
+   no Leaflet maxBounds (it re-centred the map). Instead a round **bubble**
+   (`bubble = {c, r}`: course centre, farthest course point + `BUBBLE_M` 250 m;
+   no data yet: 1.2 km) limits only the CENTRE of the screen: `keepInBubble()` on
+   `moveend` glides it back to the nearest point on the edge. `unlockMap()` before
+   jumping to another course. Works on the turned map.
+   **No surprise re-framing:** touching the map (`pointerdown`/`wheel`/`touchstart`
+   on the container) sets `userTouched`; while set, `render()` (data arriving in
+   the background) doesn't fly the hole/overview. Reset by `setMode` and the hole
+   arrows. Pinning a green no longer re-frames.
 2. **Course overview**: full-screen satellite map fitted to the whole course,
    all mapped holes numbered, tee picker chips, big **Start round** button at
    75% of screen height. ‹ goes back to course list.

@@ -1122,13 +1122,16 @@ function openMap(k){
       map.on('move', updateReadout);
       map.on('moveend', () => { if (mode === 'round' && spot) drawLive(); });   // re-pick the side for the spot's numbers
       map.on('dragstart', () => { if (mapper) mapper.userMoved = true; });
+      map.on('moveend', keepInBubble);
+      /* once you touch the map, data arriving in the background doesn't re-frame it (until you change hole / screen) */
+      ['pointerdown', 'wheel', 'touchstart'].forEach(ev => map.getContainer().addEventListener(ev, () => { userTouched = true; }, { passive:true }));
       map.on('click', e => { if (mode !== 'round') return;
         const p = [e.latlng.lat, e.latlng.lng];
         if (placing){ placing = false; me = p; meAcc = 0; manualMe = true; return renderHole(false); }   // you picked where you are
         if (!pinning){                                      // any other tap marks a spot to measure; tapping the spot again clears it
           spot = spot && map.latLngToContainerPoint(spot).distanceTo(e.containerPoint) < 24 ? null : p; return drawLive(); }
         (greens[course.id] ||= {})[hole] = p; saveGreens();
-        pinning = false; renderHole(); });
+        pinning = false; renderHole(false); });
     } else { unlockMap(); map.setView(k.center, k.zoom); }
     setTimeout(() => { map.invalidateSize(); lockToCourse(); }, 60);
   }
@@ -1141,8 +1144,9 @@ function openMap(k){
   /* your own map of this course, if you've made one; the mapper then starts at the first hole you haven't mapped */
   loadCourseMap(k).then(() => { if (course === k && mode === 'mapping' && mapper && !mapper.dirty && !Object.keys(mapper.tees || {}).length) mapperGoto(firstUnmapped()); });
 }
+let userTouched = false;
 function setMode(m){
-  mode = m; const r = m === 'round', mp = m === 'mapping';
+  mode = m; userTouched = false; const r = m === 'round', mp = m === 'mapping';
   $('#holeCard').hidden = $('#holeTop').hidden = !r; if (!r){ $('#clubBox').hidden = $('#clubSheet').hidden = true; clubMenu(false); caddyOff(); } $('#caddyBtn').hidden = !r; $('#mapScreen').classList.toggle('round', r);
   if (!r) placing = false;
   $('#startRound').hidden = r || mp; $('#endRound').hidden = !r; $('#mapBack').hidden = r;
@@ -1153,7 +1157,7 @@ function setMode(m){
 }
 function render(){
   lockToCourse();                                  // new map data may make the course bigger
-  if (mode === 'round') return renderHole();
+  if (mode === 'round') return renderHole(!userTouched);
   if (mode === 'mapping'){                         // new map data arrived: redraw; follow the guide if you haven't moved the map
     osmLayer?.remove(); curLayer?.remove(); curLayer = null;
     const m = mapper; return renderMapper(!!m && m.step === 'tee' && !m.tee && !m.userMoved);
@@ -1162,7 +1166,7 @@ function render(){
   curLayer?.remove(); curLayer = null;
   if (osmLayer && !map.hasLayer(osmLayer)) osmLayer.addTo(map);
   setBearing(0);                                   // course overview stays north-up
-  fitCourse();
+  if (!userTouched) fitCourse();
 }
 /* ---------- turn the map so a hole plays from the bottom of the screen to the top ---------- */
 function setBearing(deg){ if (map?.setBearing) map.setBearing(deg); }
@@ -1199,16 +1203,28 @@ function fitCourse(){
   if (pts.length) map.flyToBounds(L.latLngBounds(pts), { ...FIT(), duration:.6 });
   else map.setView(course.center, course.zoom);
 }
-/* you can't zoom out past the whole course (the overview's view) or drag the map far away from it */
+/* you can't zoom out past the whole course (the overview's view), and the CENTRE of the screen can't leave a
+   round "bubble" around the course (course + BUBBLE_M). Zoomed in you can look anywhere inside it freely;
+   let go past the edge and the map glides back to the edge (no re-centring). */
+const BUBBLE_M = 250;
+let bubble = null;                                 // { c: L.LatLng, r: metres }
 function lockToCourse(){
   if (!map || !course) return;
   const pts = coursePts(), b = pts.length ? L.latLngBounds(pts) : L.latLng(course.center).toBounds(2400);   // no map data yet: ~1.2 km around the course
-  map.setMaxBounds(null);
+  const c = b.getCenter();
+  bubble = { c, r: (pts.length ? Math.max(...pts.map(p => c.distanceTo(p))) : 1200) + BUBBLE_M };
   const f = FIT(), z = map.getBoundsZoom(b, false, L.point(f.paddingTopLeft).add(f.paddingBottomRight));
   map.setMinZoom(Math.max(0, Math.min(z, 18)));
-  map.setMaxBounds(b.pad(0.5));
 }
-function unlockMap(){ if (!map) return; map.setMaxBounds(null); map.setMinZoom(0); }
+function unlockMap(){ bubble = null; if (map) map.setMinZoom(0); }
+/* centre outside the bubble → glide back to the nearest point on its edge */
+function keepInBubble(){
+  if (!bubble || !map) return;
+  const m = map.getCenter(), d = bubble.c.distanceTo(m);
+  if (d <= bubble.r + 1) return;
+  const k = bubble.r / d;
+  map.panTo([bubble.c.lat + (m.lat - bubble.c.lat) * k, bubble.c.lng + (m.lng - bubble.c.lng) * k], { animate:true, duration:.35 });
+}
 function startRound(){ hole = 1; spot = null; startGPS(); meToTee(); setMode('round'); }
 /* ---------- club suggestion: the shortest club that gets there ----------
    Typical carry distances for an average golfer; later these can be your own numbers. */
@@ -1869,8 +1885,8 @@ function updateReadout(){
   el.textContent = t; el.hidden = !t;
 }
 
-$('#holePrev').onclick = () => { const c = holeCount(); hole = hole > 1 ? hole-1 : c; pinning = false; spot = null; meToTee(); renderHole(); };
-$('#holeNext').onclick = () => { const c = holeCount(); hole = hole < c ? hole+1 : 1; pinning = false; spot = null; meToTee(); renderHole(); };
+$('#holePrev').onclick = () => { const c = holeCount(); hole = hole > 1 ? hole-1 : c; pinning = false; spot = null; meToTee(); userTouched = false; renderHole(); };
+$('#holeNext').onclick = () => { const c = holeCount(); hole = hole < c ? hole+1 : 1; pinning = false; spot = null; meToTee(); userTouched = false; renderHole(); };
 $('#pinGreen').onclick = () => { pinning = !pinning; placing = false; renderHole(false); };
 /* ---------- spoken yardage: the phone's own voice (free, works without signal) ---------- */
 let voice = null;
