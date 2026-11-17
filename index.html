@@ -1129,8 +1129,8 @@ function openMap(k){
           spot = spot && map.latLngToContainerPoint(spot).distanceTo(e.containerPoint) < 24 ? null : p; return drawLive(); }
         (greens[course.id] ||= {})[hole] = p; saveGreens();
         pinning = false; renderHole(); });
-    } else map.setView(k.center, k.zoom);
-    setTimeout(() => map.invalidateSize(), 60);
+    } else { unlockMap(); map.setView(k.center, k.zoom); }
+    setTimeout(() => { map.invalidateSize(); lockToCourse(); }, 60);
   }
   courseMap = null; mapper = null; providerMap = null;
   map?.attributionControl?.removeAttribution(IGOLF_ATTR);
@@ -1152,6 +1152,7 @@ function setMode(m){
   showStatus(); renderTees(); render();
 }
 function render(){
+  lockToCourse();                                  // new map data may make the course bigger
   if (mode === 'round') return renderHole();
   if (mode === 'mapping'){                         // new map data arrived: redraw; follow the guide if you haven't moved the map
     osmLayer?.remove(); curLayer?.remove(); curLayer = null;
@@ -1186,13 +1187,28 @@ function flyToTurned(pts, pad, maxZoom){
   const my = (Math.max(...ys) + Math.min(...ys)) / 2 + (pad.b - pad.t) / 2 / k;
   map.flyTo(map.unproject(toWorld([mx, my]), z), zoom, { duration:.6 });
 }
-function fitCourse(){
-  const pts = [...(!osmData ? [] : osmData.boundary.length ? osmData.boundary.flat()
+function coursePts(){
+  return [...(!osmData ? [] : osmData.boundary.length ? osmData.boundary.flat()
     : [...osmData.holes.flatMap(h => h.line), ...osmData.greens.flat()]),
-    ...Object.values(playHoles()).flatMap(h => [h.tee, h.front, h.back])];
-  if (pts.length) map.flyToBounds(L.latLngBounds(pts), { paddingTopLeft:[24,96], paddingBottomRight:[24, Math.round(innerHeight*0.32)], duration:.6 });
+    ...Object.values(playHoles()).flatMap(h => [h.tee, h.front, h.back])].filter(Boolean);
+}
+const FIT = () => ({ paddingTopLeft:[24,96], paddingBottomRight:[24, Math.round(innerHeight*0.32)] });
+function fitCourse(){
+  const pts = coursePts();
+  lockToCourse();
+  if (pts.length) map.flyToBounds(L.latLngBounds(pts), { ...FIT(), duration:.6 });
   else map.setView(course.center, course.zoom);
 }
+/* you can't zoom out past the whole course (the overview's view) or drag the map far away from it */
+function lockToCourse(){
+  if (!map || !course) return;
+  const pts = coursePts(), b = pts.length ? L.latLngBounds(pts) : L.latLng(course.center).toBounds(2400);   // no map data yet: ~1.2 km around the course
+  map.setMaxBounds(null);
+  const f = FIT(), z = map.getBoundsZoom(b, false, L.point(f.paddingTopLeft).add(f.paddingBottomRight));
+  map.setMinZoom(Math.max(0, Math.min(z, 18)));
+  map.setMaxBounds(b.pad(0.5));
+}
+function unlockMap(){ if (!map) return; map.setMaxBounds(null); map.setMinZoom(0); }
 function startRound(){ hole = 1; spot = null; startGPS(); meToTee(); setMode('round'); }
 /* ---------- club suggestion: the shortest club that gets there ----------
    Typical carry distances for an average golfer; later these can be your own numbers. */

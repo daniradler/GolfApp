@@ -62,6 +62,10 @@ saying something works.
    order, partial words and small typos (edit distance, swaps count as one).
    "bethpage black" → "Black at Bethpage". Nominatim results are merged in when
    no result matches every word.
+   **Map lock** (`lockToCourse()`, from `render()`/`fitCourse()`/`openMap`): min zoom
+   = the overview's fit of the whole course (`coursePts()`, same padding `FIT()`),
+   max bounds = course box padded 50% (no data yet: 1.2 km around the center);
+   `unlockMap()` before jumping to another course. Works on the turned map.
 2. **Course overview**: full-screen satellite map fitted to the whole course,
    all mapped holes numbered, tee picker chips, big **Start round** button at
    75% of screen height. ‹ goes back to course list.
